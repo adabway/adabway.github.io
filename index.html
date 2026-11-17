@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>التطبيق</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="config.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #ffffff);
+      --text: var(--tg-theme-text-color, #111111);
+      --hint: var(--tg-theme-hint-color, #888888);
+      --button: var(--tg-theme-button-color, #2481cc);
+      --button-text: var(--tg-theme-button-text-color, #ffffff);
+      --link: var(--tg-theme-link-color, #2481cc);
+      --secondary: var(--tg-theme-secondary-bg-color, #f4f4f5);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text);
+      font-family: system-ui, "Segoe UI", Tahoma, "Noto Naskh Arabic", "Noto Sans Arabic", sans-serif; }
+    main { max-width: 40rem; margin: 0 auto; padding: 1rem 1rem 5.5rem; }
+    h1 { font-size: 1.15rem; margin: 0 0 .35rem; }
+    h2 { font-size: 1.05rem; margin: 1.1rem 0 .5rem; }
+    .hint, #status { color: var(--hint); }
+    #status[data-err="1"] { color: #c0392b; }
+    [hidden] { display: none !important; }
+    .card { background: var(--secondary); border-radius: .75rem; padding: .85rem 1rem; margin: .6rem 0; }
+    .name { font-weight: 700; }
+    .meta, .reason { color: var(--hint); font-size: .9rem; margin-top: .2rem; }
+    .ltr { direction: ltr; unicode-bidi: isolate; text-align: left; }
+    .act { display: flex; justify-content: space-between; gap: .5rem; align-items: baseline; padding: .35rem 0; }
+    .badge { font-size: .8rem; white-space: nowrap; }
+    .badge.open { color: #1a7f37; } .badge.paused { color: #9a6700; }
+    .badge.submitted { color: #0969da; } .badge.rejected { color: #c0392b; }
+    button, .btn {
+      display: inline-block; border: 0; border-radius: .55rem; padding: .55rem .9rem; margin: .2rem .15rem 0 0;
+      background: var(--button); color: var(--button-text); font: inherit; cursor: pointer; text-decoration: none;
+    }
+    button.secondary { background: transparent; color: var(--link); padding-right: 0; }
+    input, textarea, select {
+      width: 100%; font: inherit; padding: .55rem .65rem; margin: .3rem 0; border-radius: .5rem;
+      border: 1px solid var(--hint); background: var(--bg); color: var(--text);
+    }
+    textarea { min-height: 6rem; resize: vertical; }
+    pre { white-space: pre-wrap; font: inherit; margin: 0; }
+    .wird html, .wird { white-space: pre-wrap; }
+    .wird a, a { color: var(--link); }
+    .sub-actions { margin-top: .45rem; }
+    .filters { display: flex; flex-wrap: wrap; gap: .35rem; margin: .4rem 0; }
+    .filters button, button.chip { background: transparent; color: var(--text); border: 1px solid var(--hint); padding: .3rem .6rem; }
+    .filters button.active, button.chip.active { background: var(--button); color: var(--button-text); border-color: transparent; }
+    button.danger { background: #c0392b; color: #fff; }
+    .text { white-space: pre-wrap; margin-top: .35rem; }
+    nav {
+      position: fixed; bottom: 0; left: 0; right: 0; background: var(--secondary);
+      display: flex; justify-content: space-around; padding: .4rem .3rem calc(.4rem + env(safe-area-inset-bottom));
+      border-top: 1px solid rgba(127,127,127,.25);
+    }
+    nav button { background: transparent; color: var(--text); flex: 1; padding: .45rem 0; font-size: .85rem; }
+    nav button.active { color: var(--button); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1 id="title">التطبيق</h1>
+    <p id="status">جارٍ التحميل…</p>
+    <section id="user" class="card" hidden>
+      <div class="name" id="user-name"></div>
+      <div class="meta" id="user-role"></div>
+      <div class="meta ltr" id="user-email"></div>
+    </section>
+    <section id="view-home"></section>
+    <section id="view-submit" hidden></section>
+    <section id="view-subs" hidden></section>
+    <section id="view-grades" hidden></section>
+    <section id="view-more" hidden></section>
+    <section id="view-review" hidden></section>
+    <section id="view-acts" hidden></section>
+    <section id="view-qaadmin" hidden></section>
+  </main>
+  <nav id="nav" hidden>
+    <button data-tab="home" class="active">🏠 الرئيسية</button>
+    <button data-tab="submit">📤 تسليم</button>
+    <button data-tab="subs">🗂 تسليماتي</button>
+    <button data-tab="grades">📊 درجاتي</button>
+    <button data-tab="more">⋯ المزيد</button>
+  </nav>
+  <script>
+    (function () {
+      var tg = window.Telegram && window.Telegram.WebApp;
+      var params = new URLSearchParams(location.search);
+      var tid = params.get('t') || '';
+      var role = params.get('r') === 'admin' ? 'admin' : 'student';
+      var cacheKey = 'miniapp:bootstrap:' + tid + ':' + role;
+      var initData = (tg && tg.initData) || '';
+      var data = null, tab = 'home', sel = { pid: '', activity: '', level: '' };
+      var admin = { pid: '', filter: 'all', q: '', review: null, qa: null, settings: null, schedule: null, report: '', summary: '' };
+      var statusEl = document.getElementById('status');
+
+      function setStatus(t, err) {
+        statusEl.textContent = t || '';
+        statusEl.setAttribute('data-err', err ? '1' : '0');
+        statusEl.hidden = !t;
+      }
+
+      function isAdmin() { return data && data.user && (data.user.role === 'admin' || data.user.role === 'owner'); }
+      function pidOf() { return admin.pid || (data && data.programs && data.programs[0] && data.programs[0].id) || ''; }
+      function esc(t) { return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+      function pidSelectHtml() {
+        var list = (data && data.programs) || [];
+        if (!list.length) return '<p class="hint">لا برامج في نطاقك.</p>';
+        return '<label>البرنامج</label><select id="admin-pid">' + list.map(function (p) {
+          return '<option value="' + esc(p.id) + '"' + (p.id === pidOf() ? ' selected' : '') + '>' + esc(p.name || p.id) + (p.open ? ' 🟢' : ' ⚪️') + '</option>';
+        }).join('') + '</select>';
+      }
+      function bindPid(el) {
+        var selEl = el.querySelector('#admin-pid');
+        if (!selEl) return;
+        selEl.onchange = function () { admin.pid = selEl.value; admin.review = admin.qa = admin.settings = admin.schedule = null; admin.summary = admin.report = ''; renderAll(); loadTab(tab); };
+      }
+      function runAdmin(action, body, msg) {
+        setStatus(msg || 'جارٍ التنفيذ…');
+        return api(action, body).then(function (r) {
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التنفيذ.', true); return r; }
+          setStatus(r.message || '');
+          return r;
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
+      function apiUrl() {
+        var base = (window.MINIAPP_API || '').replace(/\/+$/, '');
+        return base ? base + '?b=app&t=' + encodeURIComponent(tid) + '&r=' + encodeURIComponent(role) : '';
+      }
+      function api(action, extra) {
+        return fetch(apiUrl(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: JSON.stringify(Object.assign({ initData: initData, action: action }, extra || {}))
+        }).then(function (r) { return r.text(); }).then(JSON.parse);
+      }
+      function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]; }); }
+      function sanitizeWird(html) {
+        return String(html || '')
+          .replace(/<(?!\/?a\b)[^>]*>/gi, '')
+          .replace(/<a\s+[^>]*>/gi, function (tag) {
+            var m = tag.match(/href\s*=\s*"([^"]*)"/i) || tag.match(/href\s*=\s*'([^']*)'/i);
+            var url = m && /^https?:\/\//i.test(m[1]) ? m[1] : '';
+            return url ? '<a href="' + url.replace(/"/g, '') + '" target="_blank" rel="noopener">' : '';
+          })
+          .replace(/\n/g, '<br>');
+      }
+      function progById(id) { return (data.programs || []).find(function (p) { return p.id === id; }); }
+      function firstProg() { return (data.programs || []).filter(function (p) { return p.open; })[0] || (data.programs || [])[0]; }
+
+      function renderUser() {
+        if (!data || !data.user) return;
+        document.getElementById('user-name').textContent = data.user.name || '';
+        document.getElementById('user-role').textContent = (data.tenant && data.tenant.name ? data.tenant.name + ' — ' : '') + (data.user.roleLabel || data.user.role || '');
+        document.getElementById('user-email').textContent = data.email || '';
+        document.getElementById('user').hidden = false;
+        document.getElementById('title').textContent = (data.tenant && data.tenant.name) || 'التطبيق';
+      }
+      function regLink(p) {
+        if (p.registered || !p.regFormUrl) return '';
+        return '<p class="meta">لست مسجّلًا في هذا البرنامج. <a class="btn" href="' + esc(p.regFormUrl) + '" target="_blank" rel="noopener">📝 التسجيل في البرنامج</a></p>';
+      }
+      function emailBox() {
+        return '<div class="card"><label>البريد الذي سجلت به</label>' +
+          '<input id="email-input" class="ltr" type="email" value="' + esc(data.email || '') + '" placeholder="name@gmail.com">' +
+          '<button type="button" id="email-save">حفظ البريد</button></div>';
+      }
+      function actLine(p, a) {
+        return '<div class="act"><span>' + esc(a.title) + (a.level ? ' <span class="meta">(' + esc(a.level) + ')</span>' : '') +
+          '</span><span class="badge ' + esc(a.status) + '">' + esc(a.statusLabel) + '</span></div>' +
+          (a.reason ? '<div class="reason">' + esc(a.reason) + '</div>' : '');
+      }
+      function renderHome() {
+        var el = document.getElementById('view-home');
+        var html = emailBox();
+        (data.programs || []).forEach(function (p) {
+          html += '<div class="card"><div class="name">' + esc(p.name) + (p.open ? '' : ' — مغلق') + '</div>';
+          html += regLink(p);
+          if (p.levels && p.levels.length) html += '<div class="meta">المستويات: ' + esc(p.levels.join('، ')) + '</div>';
+          (p.activities || []).forEach(function (a) { html += actLine(p, a); });
+          if (p.subsCount) html += '<div class="meta">تسليماتك: ' + p.subsCount + '</div>';
+          html += '</div>';
+        });
+        if (!(data.programs || []).length) html += '<p class="hint">لا توجد برامج ظاهرة الآن.</p>';
+        el.innerHTML = html;
+        bindEmail();
+      }
+      function bindEmail() {
+        var btn = document.getElementById('email-save');
+        if (!btn) return;
+        btn.onclick = function () {
+          setStatus('جارٍ التحقق…');
+          api('setEmail', { email: document.getElementById('email-input').value, pid: sel.pid || (firstProg() && firstProg().id) || '' })
+            .then(function (r) {
+              if (!r.ok) { setStatus(r.message || r.error, true); return refresh(); }
+              setStatus('حُفظ البريد.');
+              return refresh();
+            }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+        };
+      }
+      function fillSelects() {
+        var p = progById(sel.pid) || firstProg();
+        if (!p) return;
+        sel.pid = p.id;
+        var acts = (p.activities || []).filter(function (a) { return !sel.level || !a.level || a.level === sel.level; });
+        if (sel.activity && !acts.some(function (a) { return a.key === sel.activity; })) sel.activity = '';
+        if (!sel.activity && acts[0]) sel.activity = acts[0].key;
+        var pSel = document.getElementById('sub-pid');
+        var lSel = document.getElementById('sub-level');
+        var aSel = document.getElementById('sub-act');
+        if (pSel) pSel.innerHTML = (data.programs || []).map(function (x) {
+          return '<option value="' + esc(x.id) + '"' + (x.id === sel.pid ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+        }).join('');
+        if (lSel) {
+          var levels = p.levels || [];
+          lSel.parentNode.hidden = !levels.length;
+          lSel.innerHTML = levels.map(function (l) {
+            return '<option value="' + esc(l) + '"' + (l === sel.level ? ' selected' : '') + '>' + esc(l) + '</option>';
+          }).join('');
+          if (levels.length && !sel.level) { sel.level = levels[0]; fillSelects(); return; }
+        }
+        if (aSel) aSel.innerHTML = acts.map(function (a) {
+          return '<option value="' + esc(a.key) + '"' + (a.key === sel.activity ? ' selected' : '') + '>' + esc(a.title) + (a.level ? ' (' + esc(a.level) + ')' : '') + ' — ' + esc(a.statusLabel) + '</option>';
+        }).join('');
+        var act = acts.find(function (a) { return a.key === sel.activity; });
+        var hint = document.getElementById('sub-hint');
+        var textBox = document.getElementById('sub-text-wrap');
+        var fileBtn = document.getElementById('sub-file');
+        if (hint) hint.textContent = (act && act.instructions) || (act && act.reason) || '';
+        if (textBox) textBox.hidden = !!(act && act.accepts === 'file');
+        if (fileBtn) fileBtn.hidden = !!(act && act.accepts === 'text');
+        var hold = document.getElementById('sub-reg');
+        if (hold) hold.innerHTML = p ? regLink(p) : '';
+      }
+      function renderSubmit() {
+        var el = document.getElementById('view-submit');
+        if (!(data.programs || []).length) { el.innerHTML = '<p class="hint">لا توجد برامج للتسليم.</p>'; return; }
+        el.innerHTML = emailBox() + '<div class="card" id="sub-reg"></div><div class="card">' +
+          '<label>البرنامج</label><select id="sub-pid"></select>' +
+          '<div><label>المستوى</label><select id="sub-level"></select></div>' +
+          '<label>الفعالية</label><select id="sub-act"></select>' +
+          '<p class="hint" id="sub-hint"></p>' +
+          '<div id="sub-text-wrap"><label>نص المشاركة</label><textarea id="sub-text"></textarea>' +
+          '<button type="button" id="sub-send">إرسال النص</button></div>' +
+          '<button type="button" id="sub-file">إرسال صورة أو ملف في المحادثة</button></div>';
+        bindEmail();
+        fillSelects();
+        document.getElementById('sub-pid').onchange = function () { sel.pid = this.value; sel.activity = ''; sel.level = ''; fillSelects(); };
+        document.getElementById('sub-level').onchange = function () { sel.level = this.value; sel.activity = ''; fillSelects(); };
+        document.getElementById('sub-act').onchange = function () { sel.activity = this.value; fillSelects(); };
+        document.getElementById('sub-send').onclick = function () {
+          setStatus('جارٍ الإرسال…');
+          api('submitText', { pid: sel.pid, activity: sel.activity, level: sel.level, text: document.getElementById('sub-text').value,
+            nonce: Date.now().toString(36) + Math.random().toString(36).slice(2) })
+            .then(function (r) {
+              if (!r.ok) { setStatus(r.message || r.error, true); return; }
+              setStatus(r.confirmation || 'تم الاستلام.');
+              document.getElementById('sub-text').value = '';
+              return refresh();
+            }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+        };
+        document.getElementById('sub-file').onclick = function () {
+          setStatus('جارٍ التجهيز…');
+          api('startFile', { pid: sel.pid, activity: sel.activity, level: sel.level })
+            .then(function (r) {
+              if (!r.ok) { setStatus(r.message || r.error, true); return; }
+              setStatus(r.message || 'أرسل الملف في المحادثة.');
+              if (tg && tg.close) tg.close();
+            }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+        };
+      }
+      function renderSubs() {
+        var el = document.getElementById('view-subs');
+        var html = '';
+        (data.programs || []).forEach(function (p) {
+          html += '<h2>' + esc(p.name) + '</h2>';
+          if (!p.showSubs) { html += '<p class="hint">عرض التسليمات غير متاح في هذا البرنامج حاليًا.</p>'; return; }
+          if (!(p.subs || []).length) { html += '<p class="hint">لا توجد تسليمات مرسلة من حسابك هذا بعد.</p>'; return; }
+          p.subs.forEach(function (s) {
+            html += '<div class="card" data-pid="' + esc(p.id) + '" data-sub="' + esc(s.id) + '"><div class="name">' + esc(s.act) + (s.level ? ' (' + esc(s.level) + ')' : '') + ' #' + esc(s.n) + '</div>' +
+              '<div class="meta">' + esc(s.statusLabel) + (s.time ? ' — ' + esc(s.time) : '') + (s.type ? ' — ' + esc(s.type) : '') + '</div>' +
+              (s.text ? '<pre>' + esc(s.text) + '</pre>' : '') +
+              (s.hasFile || s.fileName ? '<div class="meta">📎 ' + esc(s.fileName || 'ملف') + '</div>' : '') +
+              (s.reason ? '<div class="reason">' + esc(s.reason) + '</div>' : '') +
+              (s.editBlock && !s.canEdit ? '<div class="reason">' + esc(s.editBlock) + '</div>' : '') +
+              '<div class="sub-actions">' +
+              (s.canEdit && s.accepts !== 'file' ? '<button type="button" class="js-edit-text">✏️ تعديل النص</button>' : '') +
+              (s.canEdit && s.accepts !== 'text' ? '<button type="button" class="js-edit-file">✏️ تعديل بملف</button>' : '') +
+              (s.canDelete ? '<button type="button" class="js-del">🗑 حذف</button>' : '') +
+              '</div><div class="js-edit-box" hidden><textarea></textarea><button type="button" class="js-edit-send">حفظ التعديل</button></div></div>';
+          });
+        });
+        el.innerHTML = html || '<p class="hint">لا توجد تسليمات بعد.</p>';
+        bindSubs(el);
+      }
+      function renderGrades() {
+        var el = document.getElementById('view-grades');
+        var html = '';
+        (data.programs || []).forEach(function (p) {
+          html += '<h2>' + esc(p.name) + '</h2>';
+          if (!p.showGrades) { html += '<p class="hint">عرض الدرجات غير متاح في هذا البرنامج حاليًا.</p>'; return; }
+          if (!p.registered) { html += regLink(p) || '<p class="hint">تحقق من بريدك أولًا لعرض درجاتك.</p>'; return; }
+          html += '<div class="card"><pre>' + esc(p.gradesText || 'لا توجد لك درجات بعد.') + '</pre></div>';
+        });
+        el.innerHTML = html || '<p class="hint">لا توجد درجات.</p>';
+      }
+      function bindSubs(el) {
+        el.querySelectorAll('.card[data-sub]').forEach(function (card) {
+          var pid = card.getAttribute('data-pid'), subId = card.getAttribute('data-sub');
+          var box = card.querySelector('.js-edit-box');
+          var editBtn = card.querySelector('.js-edit-text');
+          var fileBtn = card.querySelector('.js-edit-file');
+          var delBtn = card.querySelector('.js-del');
+          if (editBtn) editBtn.onclick = function () { box.hidden = !box.hidden; };
+          if (box) box.querySelector('.js-edit-send').onclick = function () {
+            setStatus('جارٍ التعديل…');
+            api('editText', { pid: pid, subId: subId, text: box.querySelector('textarea').value,
+              nonce: Date.now().toString(36) + Math.random().toString(36).slice(2) })
+              .then(function (r) { if (!r.ok) { setStatus(r.message || r.error, true); return; } setStatus(r.message || 'عُدّل التسليم.'); return refresh(); })
+              .catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+          };
+          if (fileBtn) fileBtn.onclick = function () {
+            setStatus('جارٍ التجهيز…');
+            api('startEditFile', { pid: pid, subId: subId })
+              .then(function (r) { if (!r.ok) { setStatus(r.message || r.error, true); return; } setStatus(r.message || 'أرسل الملف في المحادثة.'); if (tg && tg.close) tg.close(); })
+              .catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+          };
+          if (delBtn) delBtn.onclick = function () {
+            var go = (tg && tg.showConfirm) ? null : window.confirm('حذف هذا التسليم؟ لا يمكن التراجع.');
+            function run() {
+              setStatus('جارٍ الحذف…');
+              api('deleteSub', { pid: pid, subId: subId })
+                .then(function (r) { if (!r.ok) { setStatus(r.message || r.error, true); return; } setStatus(r.message || 'حُذف التسليم.'); return refresh(); })
+                .catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+            }
+            if (tg && tg.showConfirm) tg.showConfirm('حذف هذا التسليم؟ لا يمكن التراجع.', function (ok) { if (ok) run(); });
+            else if (go) run();
+          };
+        });
+      }
+      function renderMore() {
+        var el = document.getElementById('view-more');
+        var html = '<div class="card"><div class="name">التذكيرات</div><p class="meta">' +
+          (data.remindersOff ? '🔕 التذكيرات موقوفة لك الآن.' : '🔔 التذكيرات مفعّلة لك.') + '</p>' +
+          '<button type="button" id="rem-toggle">' + (data.remindersOff ? '🔔 تشغيل التذكيرات' : '🔕 إيقاف التذكيرات') + '</button></div>';
+        if (data.wird) {
+          html += '<h2>📖 الورد</h2>';
+          (data.wird.programs || []).forEach(function (p) {
+            html += '<h2>' + esc(p.name) + '</h2>';
+            (p.days || []).forEach(function (d) {
+              html += '<div class="card wird"><div class="meta">' + esc(d.day) + (d.today ? ' — اليوم' : '') + '</div>';
+              if (d.skipped) html += '<p class="reason">' + esc(d.reason || 'لا نشر هذا اليوم') + '</p>';
+              else html += '<div>' + sanitizeWird(d.html) + '</div>';
+              html += '</div>';
+            });
+          });
+          if (!(data.wird.programs || []).length) html += '<p class="hint">لا أوراد في الأيام القادمة.</p>';
+        }
+        if (data.qa) {
+          html += '<h2>❓ الأسئلة</h2><p class="meta">متبقّى لك اليوم: ' + esc(data.qa.remaining) + ' من ' + esc(data.qa.limit) + '</p>';
+          (data.qa.programs || []).forEach(function (p) {
+            html += '<div class="card"><div class="name">' + esc(p.name) + '</div>';
+            (p.faq || []).forEach(function (f) { html += '<p><strong>' + esc(f.q) + '</strong><br>' + esc(f.a) + '</p>'; });
+            if (!(p.faq || []).length) html += '<p class="hint">لا أسئلة شائعة بعد.</p>';
+            html += '<textarea class="js-ask" placeholder="اكتب سؤالك"></textarea><button type="button" class="js-ask-send" data-pid="' + esc(p.id) + '">اسأل</button>';
+            html += '<h2>أسئلتي</h2>';
+            (p.questions || []).forEach(function (q) {
+              html += '<div class="card"><div class="name">' + esc(q.question) + '</div><div class="meta">' + esc(q.status) + (q.at ? ' — ' + esc(q.at) : '') + '</div>' +
+                (q.answer ? '<pre>' + esc(q.answer) + '</pre>' : (q.pending ? '<p class="hint">بانتظار مراجعة المشرف.</p>' : '')) + '</div>';
+            });
+            if (!(p.questions || []).length) html += '<p class="hint">لم تسأل بعد.</p>';
+            html += '</div>';
+          });
+        }
+        el.innerHTML = html;
+        var rem = document.getElementById('rem-toggle');
+        if (rem) rem.onclick = function () {
+          api('reminders', { off: !data.remindersOff }).then(function (r) { if (r.ok) { data.remindersOff = r.off; renderMore(); setStatus(r.off ? 'أُوقفت التذكيرات.' : 'أُعيد تشغيل التذكيرات.'); } });
+        };
+        el.querySelectorAll('.js-ask-send').forEach(function (btn) {
+          btn.onclick = function () {
+            var area = btn.parentNode.querySelector('.js-ask');
+            setStatus('جارٍ الإرسال…');
+            api('ask', { pid: btn.getAttribute('data-pid'), text: area && area.value })
+              .then(function (r) { if (!r.ok) { setStatus(r.message || r.error, true); return; } setStatus(r.message); if (area) area.value = ''; return refresh(); })
+              .catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+          };
+        });
+      }
+
+      function setNav() {
+        var nav = document.getElementById('nav');
+        if (isAdmin()) {
+          nav.innerHTML = '<button data-tab="home">🏠 البرامج</button>' +
+            '<button data-tab="review">📋 المراجعة</button>' +
+            '<button data-tab="acts">⏸ الفعاليات</button>' +
+            (data.qaActive ? '<button data-tab="qaadmin">❓ الأسئلة</button>' : '') +
+            '<button data-tab="more">⋯ المزيد</button>';
+        } else {
+          nav.innerHTML = '<button data-tab="home">🏠 الرئيسية</button>' +
+            '<button data-tab="submit">📤 تسليم</button>' +
+            '<button data-tab="subs">🗂 تسليماتي</button>' +
+            '<button data-tab="grades">📊 درجاتي</button>' +
+            '<button data-tab="more">⋯ المزيد</button>';
+        }
+        Array.prototype.forEach.call(nav.querySelectorAll('button'), function (b) {
+          b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+        });
+        nav.hidden = false;
+      }
+      function renderAdminHome() {
+        var el = document.getElementById('view-home');
+        var list = data.programs || [];
+        el.innerHTML = '<h2>البرامج</h2>' + (list.map(function (p) {
+          return '<div class="card" data-pid="' + esc(p.id) + '"><div class="name">' + esc(p.name || p.id) + '</div>' +
+            '<div class="meta">' + (p.open ? '🟢 مفتوح للتسليم' : '⚪️ مغلق') + ' — ' + (p.activities || []).length + ' فعالية</div>' +
+            '<button class="js-open" data-open="' + (p.open ? '0' : '1') + '">' + (p.open ? '🔒 إغلاق التسليم' : '🔓 فتح التسليم') + '</button>' +
+            '<button class="secondary js-sum">📊 الملخص</button></div>';
+        }).join('') || '<p class="hint">لا برامج في نطاقك.</p>') +
+          (admin.summary ? '<div class="card"><pre>' + esc(admin.summary) + '</pre></div>' : '');
+        el.querySelectorAll('.js-open').forEach(function (btn) {
+          btn.onclick = function () {
+            var pid = btn.parentNode.getAttribute('data-pid');
+            runAdmin('toggleOpen', { pid: pid, open: btn.getAttribute('data-open') === '1' }).then(function (r) { if (r && r.ok) refresh(); });
+          };
+        });
+        el.querySelectorAll('.js-sum').forEach(function (btn) {
+          btn.onclick = function () {
+            var pid = btn.parentNode.getAttribute('data-pid');
+            admin.pid = pid;
+            runAdmin('summary', { pid: pid }, 'جارٍ إعداد الملخص…').then(function (r) {
+              if (r && r.ok) { admin.summary = r.text; renderAdminHome(); }
+            });
+          };
+        });
+      }
+      function renderReview() {
+        var el = document.getElementById('view-review');
+        var items = admin.review || [];
+        var filters = [['all','الكل'],['today','اليوم'],['open','المقبولة'],['rejected','المرفوضة']];
+        el.innerHTML = '<h2>قائمة المراجعة</h2>' + pidSelectHtml() +
+          '<div class="filters">' + filters.map(function (f) {
+            return '<button data-f="' + f[0] + '" class="' + (admin.filter === f[0] ? 'active' : '') + '">' + f[1] + '</button>';
+          }).join('') + '</div>' +
+          '<input id="rev-q" placeholder="بحث بالبريد أو الاسم" value="' + esc(admin.q || '') + '">' +
+          (items.map(function (s) {
+            var st = s.deleted ? 'محذوف' : (s.rejected ? '❌ مرفوض' : '✅ مقبول');
+            var body = s.hasFile ? ('📎 ' + esc(s.fileName || 'ملف')) : esc((s.text || '').slice(0, 400));
+            return '<div class="card" data-id="' + esc(s.id) + '"><div class="name">' + esc(s.name) + ' — «' + esc(s.act) + '» #' + esc(s.n) + '</div>' +
+              '<div class="meta">' + esc(s.email) + ' · ' + esc(s.time) + ' · ' + st + (s.reason ? ' — ' + esc(s.reason) : '') + '</div>' +
+              '<div class="text">' + body + '</div>' +
+              (s.deleted ? '' : ('<div class="sub-actions">' +
+                (s.hasFile ? '<button class="secondary js-file">أرسل الملف في المحادثة</button>' : '') +
+                (s.rejected
+                  ? '<button class="js-unrej">↩️ تراجع عن الرفض</button>'
+                  : '<button class="danger js-rej">❌ رفض</button><textarea class="js-note" placeholder="ملاحظة الرفض (اختياري)"></textarea>') +
+                '</div>'));
+          }).join('') || '<p class="hint">لا تسليمات في هذا العرض.</p>');
+        bindPid(el);
+        el.querySelectorAll('.filters button').forEach(function (b) {
+          b.onclick = function () { admin.filter = b.getAttribute('data-f'); loadReview(); };
+        });
+        var q = el.querySelector('#rev-q');
+        if (q) q.onchange = function () { admin.q = q.value; loadReview(); };
+        el.querySelectorAll('.js-rej').forEach(function (btn) {
+          btn.onclick = function () {
+            var card = btn.parentNode.parentNode;
+            var note = card.querySelector('.js-note');
+            runAdmin('reject', { pid: pidOf(), subId: card.getAttribute('data-id'), reason: note && note.value }).then(function (r) { if (r && r.ok) loadReview(); });
+          };
+        });
+        el.querySelectorAll('.js-unrej').forEach(function (btn) {
+          btn.onclick = function () {
+            runAdmin('unreject', { pid: pidOf(), subId: btn.parentNode.parentNode.getAttribute('data-id') }).then(function (r) { if (r && r.ok) loadReview(); });
+          };
+        });
+        el.querySelectorAll('.js-file').forEach(function (btn) {
+          btn.onclick = function () {
+            runAdmin('sendFile', { pid: pidOf(), subId: btn.parentNode.parentNode.getAttribute('data-id') }, 'جارٍ إرسال الملف…');
+          };
+        });
+      }
+      function loadReview() {
+        if (!pidOf()) { admin.review = []; renderReview(); return; }
+        setStatus('جارٍ تحميل التسليمات…');
+        api('review', { pid: pidOf(), filter: admin.filter, q: admin.q }).then(function (r) {
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
+          admin.review = r.items || []; setStatus(''); renderReview();
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
+      function renderActs() {
+        var el = document.getElementById('view-acts');
+        var p = ((data.programs || []).filter(function (x) { return x.id === pidOf(); })[0]) || { activities: [] };
+        el.innerHTML = '<h2>الفعاليات</h2>' + pidSelectHtml() + (p.activities || []).map(function (a) {
+          return '<div class="card" data-key="' + esc(a.key) + '"><div class="name">' + esc(a.key) + '</div>' +
+            '<div class="meta">' + esc(a.pauseLabel) + (a.points != null ? ' · ' + a.points + ' درجة' : '') + '</div>' +
+            (a.paused
+              ? '<button class="js-res">▶️ تفعيل الآن</button>'
+              : '<button class="js-pz" data-days="1">إيقاف يوم</button><button class="js-pz" data-days="3">3 أيام</button><button class="js-pz" data-days="7">أسبوع</button><button class="js-pz" data-until="inf">حتى إشعار آخر</button>') +
+            '</div>';
+        }).join('');
+        bindPid(el);
+        el.querySelectorAll('.js-pz').forEach(function (btn) {
+          btn.onclick = function () {
+            var body = { pid: pidOf(), activity: btn.parentNode.getAttribute('data-key') };
+            if (btn.getAttribute('data-until')) body.until = 'inf'; else body.days = Number(btn.getAttribute('data-days'));
+            runAdmin('pause', body).then(function (r) { if (r && r.ok) refresh(); });
+          };
+        });
+        el.querySelectorAll('.js-res').forEach(function (btn) {
+          btn.onclick = function () {
+            runAdmin('resume', { pid: pidOf(), activity: btn.parentNode.getAttribute('data-key') }).then(function (r) { if (r && r.ok) refresh(); });
+          };
+        });
+      }
+      function renderQaAdmin() {
+        var el = document.getElementById('view-qaadmin');
+        var items = admin.qa || [];
+        el.innerHTML = '<h2>الأسئلة المنتظرة' + (data.qaPending ? ' (' + data.qaPending + ')' : '') + '</h2>' + pidSelectHtml() +
+          (items.map(function (q) {
+            return '<div class="card" data-id="' + esc(q.id) + '"><div class="name">' + esc(q.name) + ' — ' + esc(q.pid) + '</div>' +
+              '<div class="text">«' + esc(q.q) + '»</div>' +
+              (q.suggested ? '<div class="meta">💡 ' + esc(q.suggested) + '</div>' : '<div class="meta">بلا إجابة مقترحة</div>') +
+              '<div class="sub-actions">' +
+              (q.suggested ? '<button class="js-sug">✅ إرسال المقترحة</button>' : '') +
+              '<button class="danger js-ign">🙈 تجاهل</button>' +
+              '<textarea class="js-custom" placeholder="رد مكتوب"></textarea><button class="js-cust">إرسال الرد</button>' +
+              '</div></div>';
+          }).join('') || '<p class="hint">لا أسئلة بانتظار المراجعة.</p>');
+        bindPid(el);
+        function after(r) { if (r && r.ok) { loadQa(); refresh(); } }
+        el.querySelectorAll('.js-sug').forEach(function (btn) {
+          btn.onclick = function () { runAdmin('qaAct', { act: 's', qid: btn.parentNode.parentNode.getAttribute('data-id') }).then(after); };
+        });
+        el.querySelectorAll('.js-ign').forEach(function (btn) {
+          btn.onclick = function () { runAdmin('qaAct', { act: 'i', qid: btn.parentNode.parentNode.getAttribute('data-id') }).then(after); };
+        });
+        el.querySelectorAll('.js-cust').forEach(function (btn) {
+          btn.onclick = function () {
+            var card = btn.parentNode.parentNode, t = card.querySelector('.js-custom');
+            runAdmin('qaAct', { act: 'c', qid: card.getAttribute('data-id'), text: t && t.value }).then(function (r) {
+              if (r && r.ok && t && t.value) {
+                if (window.confirm('هل أضيف السؤال والرد إلى الأسئلة الشائعة؟')) runAdmin('qaAct', { act: 'f', qid: card.getAttribute('data-id') }).then(after);
+                else after(r);
+              }
+            });
+          };
+        });
+      }
+      function loadQa() {
+        setStatus('جارٍ تحميل الأسئلة…');
+        api('qaPending', { pid: pidOf() }).then(function (r) {
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
+          admin.qa = r.items || []; setStatus(''); renderQaAdmin();
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
+      function renderAdminMore() {
+        var el = document.getElementById('view-more');
+        var sch = admin.schedule, set = admin.settings;
+        var html = '<h2>المزيد</h2>' + pidSelectHtml();
+        html += '<div class="card"><div class="name">📅 المواعيد والتذكيرات</div>';
+        if (sch) {
+          html += '<div class="meta">التذكيرات الآلية: ' + (sch.remindersOn ? '🟢 مفعّلة' : '⚪️ موقوفة') + '</div>' +
+            '<button class="js-rem">' + (sch.remindersOn ? '⏹ إيقاف التذكيرات' : '▶️ تفعيل التذكيرات') + '</button>' +
+            '<button class="secondary js-prev">👀 معاينة الغد</button>' +
+            (sch.items || []).map(function (x) {
+              return '<div class="act" data-row="' + x.row + '" data-key="' + esc(x.key) + '"><span>' + esc(x.line) + '</span><button class="secondary js-schdel">حذف</button></div>';
+            }).join('') +
+            '<label>إضافة موعد</label><select id="sch-key">' + (sch.schedulable || []).map(function (x) {
+              return '<option value="' + esc(x.key) + '">' + esc(x.key) + '</option>';
+            }).join('') + '</select>' +
+            '<input id="sch-start" placeholder="يبدأ في (مثل 2026-11-20) أو -">' +
+            '<input id="sch-end" placeholder="آخر موعد (مثل 2026-11-27) أو -">' +
+            '<button class="js-schadd">➕ إضافة</button>' +
+            (admin.preview ? '<pre class="text">' + esc(admin.preview) + '</pre>' : '');
+        } else html += '<button class="js-load-sch">عرض المواعيد</button>';
+        html += '</div><div class="card"><div class="name">⚙️ الإعدادات</div>';
+        if (set && set.sections) {
+          html += set.sections.filter(function (sec) { return sec.general; }).map(function (sec) {
+            return '<h2>' + esc(sec.title) + '</h2>' + sec.fields.map(function (f) {
+              var input = (f.kind === 'choice' || f.kind === 'yesno')
+                ? ('<select data-sec="' + esc(sec.id) + '" data-key="' + esc(f.key) + '">' +
+                  (f.kind === 'yesno' ? ['نعم','لا'] : (f.choices || [])).map(function (c) {
+                    return '<option' + (String(f.value) === String(c) ? ' selected' : '') + '>' + esc(c) + '</option>';
+                  }).join('') + '</select>')
+                : ('<input data-sec="' + esc(sec.id) + '" data-key="' + esc(f.key) + '" value="' + esc(f.value) + '">');
+              return '<label>' + esc(f.label) + '</label>' + input + '<button class="secondary js-save-f" data-sec="' + esc(sec.id) + '" data-key="' + esc(f.key) + '">حفظ</button>';
+            }).join('');
+          }).join('');
+        } else html += '<button class="js-load-set">عرض الإعدادات</button>';
+        html += '</div>';
+        if (data.reportActive || data.canReport) {
+          html += '<div class="card"><div class="name">📊 التقرير الشهري</div>' +
+            (data.canReport ? '<input id="rep-month" placeholder="2026-11 (اختياري)"><button class="js-rep">عرض التقرير</button>' : '<div class="hint">⛔ التقرير للمالك ومن يسمح لهم.</div>') +
+            (admin.report ? '<pre class="text">' + esc(admin.report) + '</pre>' : '') + '</div>';
+        }
+        if (data.owner && data.modules) {
+          html += '<div class="card"><div class="name">🧩 الوحدات</div>' + data.modules.map(function (m) {
+            var st = m.locked ? '🔒 غير مشمولة' : (!m.ready ? '⏳ قريبًا' : (m.on ? '🟢 مفعّلة' : '⚪️ موقوفة'));
+            return '<div class="act"><span>' + esc(m.title) + ' — ' + st + '</span>' +
+              (m.ready && !m.locked ? '<button class="js-mod" data-id="' + esc(m.id) + '">' + (m.on ? 'إيقاف' : 'تفعيل') + '</button>' : '') + '</div>';
+          }).join('') + '</div>';
+        }
+        if (data.owner) {
+          var ads = data.admins || [];
+          html += '<div class="card"><div class="name">👥 المشرفون</div>' + ads.map(function (a) {
+            return '<div class="act" data-uid="' + esc(a.id) + '"><span>' + esc(a.name || a.id) + ' — ' + (a.programs && a.programs.length ? esc(a.programs.join('، ')) : 'كل البرامج') + '</span><button class="danger js-adel">حذف</button></div>';
+          }).join('') +
+            '<input id="adm-id" placeholder="معرّف تيليجرام"><input id="adm-name" placeholder="الاسم">' +
+            '<label><input type="checkbox" id="adm-all" checked> كل البرامج</label>' +
+            '<button class="js-aadd">➕ إضافة</button></div>';
+        }
+        el.innerHTML = html;
+        bindPid(el);
+        var loadSch = el.querySelector('.js-load-sch');
+        if (loadSch) loadSch.onclick = function () { loadSchedule(); };
+        var loadSet = el.querySelector('.js-load-set');
+        if (loadSet) loadSet.onclick = function () { loadSettings(); };
+        var rem = el.querySelector('.js-rem');
+        if (rem) rem.onclick = function () { runAdmin('remindOn', { pid: pidOf(), on: !(sch && sch.remindersOn) }).then(function (r) { if (r && r.ok) loadSchedule(); }); };
+        var prev = el.querySelector('.js-prev');
+        if (prev) prev.onclick = function () { runAdmin('previewRemind', { pid: pidOf() }, 'جارٍ المعاينة…').then(function (r) { if (r && r.ok) { admin.preview = r.text; renderAdminMore(); } }); };
+        var add = el.querySelector('.js-schadd');
+        if (add) add.onclick = function () {
+          runAdmin('setSchedule', { pid: pidOf(), kind: 'add', key: (el.querySelector('#sch-key') || {}).value, start: (el.querySelector('#sch-start') || {}).value, deadline: (el.querySelector('#sch-end') || {}).value }).then(function (r) { if (r && r.ok) loadSchedule(); });
+        };
+        el.querySelectorAll('.js-schdel').forEach(function (btn) {
+          btn.onclick = function () {
+            var row = btn.parentNode;
+            runAdmin('setSchedule', { pid: pidOf(), kind: 'del', row: Number(row.getAttribute('data-row')), key: row.getAttribute('data-key') }).then(function (r) { if (r && r.ok) loadSchedule(); });
+          };
+        });
+        el.querySelectorAll('.js-save-f').forEach(function (btn) {
+          btn.onclick = function () {
+            var sec = btn.getAttribute('data-sec'), key = btn.getAttribute('data-key');
+            var inp = el.querySelector('[data-sec="' + sec + '"][data-key="' + key + '"]');
+            runAdmin('setSetting', { pid: pidOf(), sec: sec, key: key, value: inp && inp.value });
+          };
+        });
+        var rep = el.querySelector('.js-rep');
+        if (rep) rep.onclick = function () {
+          var m = el.querySelector('#rep-month');
+          runAdmin('report', { pid: pidOf(), month: m && m.value }, 'جارٍ إعداد التقرير…').then(function (r) { if (r && r.ok) { admin.report = r.text; renderAdminMore(); } });
+        };
+        el.querySelectorAll('.js-mod').forEach(function (btn) {
+          btn.onclick = function () { runAdmin('toggleModule', { id: btn.getAttribute('data-id') }).then(function (r) { if (r && r.ok) refresh(); }); };
+        });
+        el.querySelectorAll('.js-adel').forEach(function (btn) {
+          btn.onclick = function () { runAdmin('removeAdmin', { uid: btn.parentNode.getAttribute('data-uid') }).then(function (r) { if (r && r.ok) refresh(); }); };
+        });
+        var aadd = el.querySelector('.js-aadd');
+        if (aadd) aadd.onclick = function () {
+          runAdmin('addAdmin', { uid: (el.querySelector('#adm-id') || {}).value, name: (el.querySelector('#adm-name') || {}).value, all: !!(el.querySelector('#adm-all') && el.querySelector('#adm-all').checked) }).then(function (r) { if (r && r.ok) refresh(); });
+        };
+      }
+      function loadSchedule() {
+        api('schedule', { pid: pidOf() }).then(function (r) {
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
+          admin.schedule = r; setStatus(''); renderAdminMore();
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
+      function loadSettings() {
+        api('settings', { pid: pidOf() }).then(function (r) {
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
+          admin.settings = r; setStatus(''); renderAdminMore();
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
+      function loadTab(name) {
+        if (!isAdmin()) return;
+        if (name === 'review') loadReview();
+        if (name === 'qaadmin') loadQa();
+      }
+
+      function showTab(name) {
+        tab = name;
+        var tabs = isAdmin() ? ['home', 'review', 'acts', 'qaadmin', 'more'] : ['home', 'submit', 'subs', 'grades', 'more'];
+        ['home', 'submit', 'subs', 'grades', 'more', 'review', 'acts', 'qaadmin'].forEach(function (t) {
+          var n = document.getElementById('view-' + t);
+          if (n) n.hidden = t !== name;
+        });
+        setNav();
+        if (isAdmin()) {
+          if (name === 'home') renderAdminHome();
+          if (name === 'acts') renderActs();
+          if (name === 'more') renderAdminMore();
+          loadTab(name);
+        }
+      }
+      function renderAll() {
+        if (!data || !data.ok) return;
+        if (!admin.pid && data.programs && data.programs[0]) admin.pid = data.programs[0].id;
+        renderUser();
+        setNav();
+        if (isAdmin()) {
+          document.getElementById('title').textContent = data.user.role === 'owner' ? 'لوحة المالك' : 'لوحة المشرف';
+          document.getElementById('user-email').hidden = true;
+          if (tab === 'submit' || tab === 'subs' || tab === 'grades') tab = 'home';
+          renderAdminHome();
+          renderActs();
+          renderAdminMore();
+          if (admin.review) renderReview();
+          if (admin.qa) renderQaAdmin();
+          showTab(tab);
+          return;
+        }
+        document.getElementById('title').textContent = 'التطبيق';
+        document.getElementById('user-email').hidden = false;
+        renderHome();
+        renderSubmit();
+        renderSubs();
+        renderGrades();
+        renderMore();
+        showTab(tab);
+      }
+      function applyData(next, fromCache) {
+        data = next;
+        renderAll();
+        if (!fromCache) setStatus('');
+      }
+      function refresh() {
+        return api('bootstrap').then(function (r) {
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر فتح التطبيق.', true); return r; }
+          applyData(r, false);
+          try { localStorage.setItem(cacheKey, JSON.stringify({ ok: true, user: r.user, tenant: r.tenant, email: r.email, programs: r.programs || [], wird: r.wird, qa: r.qa, remindersOff: r.remindersOff, owner: r.owner, canReport: r.canReport, reportActive: r.reportActive, qaActive: r.qaActive, qaPending: r.qaPending, modules: r.modules, admins: r.admins })); } catch (e) {}
+          return r;
+        });
+      }
+
+      document.getElementById('nav').addEventListener('click', function (e) {
+        var b = e.target.closest('button');
+        if (b) showTab(b.getAttribute('data-tab'));
+      });
+
+      if (tg) { tg.ready(); tg.expand(); if (tg.onEvent) tg.onEvent('themeChanged', function () {}); }
+      try {
+        var cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached && cached.ok) { applyData(cached, true); setStatus('جارٍ التحديث…'); }
+      } catch (e) {}
+      if (!tid) { setStatus('رابط غير مكتمل.', true); return; }
+      if (!initData) { setStatus('افتح التطبيق من تيليجرام.', true); return; }
+      if (!apiUrl()) { setStatus('رابط الخادم غير مضبوط بعد.', true); return; }
+      refresh().catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+    })();
+  </script>
+</body>
+</html>
