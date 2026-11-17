@@ -78,6 +78,9 @@
     <section id="view-review" hidden></section>
     <section id="view-acts" hidden></section>
     <section id="view-qaadmin" hidden></section>
+    <section id="view-plist" hidden></section>
+    <section id="view-pdetail" hidden></section>
+    <section id="view-pnew" hidden></section>
   </main>
   <nav id="nav" hidden>
     <button data-tab="home" class="active">🏠 الرئيسية</button>
@@ -91,7 +94,9 @@
       var tg = window.Telegram && window.Telegram.WebApp;
       var params = new URLSearchParams(location.search);
       var tid = params.get('t') || '';
-      var role = params.get('r') === 'admin' ? 'admin' : 'student';
+      var isPlatform = params.get('r') === 'platform';
+      var role = isPlatform ? 'platform' : (params.get('r') === 'admin' ? 'admin' : 'student');
+      var plat = { q: '', detail: null, license: '' };
       var cacheKey = 'miniapp:bootstrap:' + tid + ':' + role;
       var initData = (tg && tg.initData) || '';
       var data = null, tab = 'home', sel = { pid: '', activity: '', level: '' };
@@ -129,7 +134,9 @@
       }
       function apiUrl() {
         var base = (window.MINIAPP_API || '').replace(/\/+$/, '');
-        return base ? base + '?b=app&t=' + encodeURIComponent(tid) + '&r=' + encodeURIComponent(role) : '';
+        if (!base) return '';
+        if (isPlatform) return base + '?b=app&r=platform';
+        return base + '?b=app&t=' + encodeURIComponent(tid) + '&r=' + encodeURIComponent(role);
       }
       function api(action, extra) {
         return fetch(apiUrl(), {
@@ -392,9 +399,118 @@
         });
       }
 
+
+      function kindLabel(k) {
+        return ({ active: '🟢 نشط', trial: '🟡 تجريبي', grace: '🟠 مهلة', expired: '🔴 منتهٍ', suspended: '⏸ موقوف' })[k] || k;
+      }
+      function renderPlatformDash() {
+        var el = document.getElementById('view-home');
+        var st = (data && data.stats) || {};
+        var cards = [['نشط', st.active], ['تجريبي', st.trial], ['مهلة', st.grace], ['منتهٍ', st.expired], ['موقوف', st.suspended]];
+        el.innerHTML = '<h2>لوحة المنصة</h2><div class="meta">العملاء: ' + (st.total || 0) + '</div>' +
+          '<div class="filters">' + cards.map(function (c) { return '<div class="card" style="flex:1;min-width:5.5rem"><div class="name">' + c[0] + '</div><div class="meta">' + (c[1] || 0) + '</div></div>'; }).join('') + '</div>' +
+          '<h2>ينتهي خلال 7 أيام</h2>' +
+          ((st.expiringSoon || []).map(function (t) {
+            return '<div class="card js-popen" data-id="' + esc(t.id) + '"><div class="name">' + esc(t.name) + ' (' + esc(t.id) + ')</div><div class="meta">' + kindLabel(t.kind) + ' — حتى ' + esc(t.expiry) + '</div></div>';
+          }).join('') || '<p class="hint">لا عملاء ينتهون خلال أسبوع.</p>');
+        el.querySelectorAll('.js-popen').forEach(function (c) { c.onclick = function () { openTenant(c.getAttribute('data-id')); }; });
+      }
+      function renderPlatformList() {
+        var el = document.getElementById('view-plist');
+        var list = data.tenants || [];
+        el.innerHTML = '<h2>العملاء</h2><input id="p-q" placeholder="بحث بالمعرّف أو الاسم" value="' + esc(plat.q || '') + '">' +
+          (list.map(function (t) {
+            return '<div class="card js-popen" data-id="' + esc(t.id) + '"><div class="name">' + esc(t.name) + ' (' + esc(t.id) + ')</div>' +
+              '<div class="meta">' + kindLabel(t.kind) + ' — حتى ' + esc(t.expiry || '—') + ' — حصة ' + esc(t.quota) +
+              ' — ' + (t.addons && t.addons.length ? esc(t.addons.join('، ')) : 'بلا إضافات') + '</div></div>';
+          }).join('') || '<p class="hint">لا عملاء في هذا العرض.</p>');
+        var q = el.querySelector('#p-q');
+        if (q) q.onchange = function () {
+          plat.q = q.value;
+          setStatus('جارٍ البحث…');
+          api('tenants', { q: plat.q }).then(function (r) {
+            if (!r || !r.ok) { setStatus((r && r.message) || 'تعذر البحث.', true); return; }
+            data.tenants = r.tenants; data.stats = r.stats || data.stats; setStatus(''); renderPlatformList();
+          }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+        };
+        el.querySelectorAll('.js-popen').forEach(function (c) { c.onclick = function () { openTenant(c.getAttribute('data-id')); }; });
+      }
+      function renderPlatformDetail() {
+        var el = document.getElementById('view-pdetail');
+        var t = plat.detail;
+        if (!t) { el.innerHTML = '<p class="hint">اختر عميلًا.</p>'; return; }
+        var modules = t.addonsDetail || (data.modules || []).map(function (m) { return { id: m.id, title: m.title, ready: m.ready, allowed: (t.addons || []).indexOf(m.id) >= 0 }; });
+        el.innerHTML = '<h2>' + esc(t.name) + ' (' + esc(t.id) + ')</h2>' +
+          '<div class="card"><div class="name">' + kindLabel(t.kind) + '</div>' +
+          '<div class="meta">الحالة: ' + esc(t.status) + (t.expiry ? ' — حتى ' + esc(t.expiry) : '') + (t.graceEnd ? ' — مهلة حتى ' + esc(t.graceEnd) : '') + '</div>' +
+          '<div class="meta">الحصة: ' + esc(t.quota) + (t.programs != null ? ' — البرامج: ' + t.programs : '') + (t.setup ? ' — الإعداد: ' + esc(t.setup) : '') + '</div>' +
+          '<div class="meta">المالك: ' + esc(t.ownerId || '—') + (t.usage ? ' — اليوم: ' + t.usage.updates + ' تحديثًا' : '') + '</div>' +
+          (t.controlUrl ? '<a class="btn secondary" href="' + esc(t.controlUrl) + '" target="_blank">ملف التحكم</a>' : '') +
+          '</div>' +
+          '<div class="card"><div class="name">الترخيص</div>' +
+          '<input id="p-ext" placeholder="أيام أو تاريخ 2027-01-01">' +
+          '<button class="js-ext">تمديد</button>' +
+          (t.status === 'suspended' ? '<button class="js-resu">▶️ استئناف</button>' : '<button class="danger js-sus">⏸ إيقاف</button>') +
+          '</div>' +
+          '<div class="card"><div class="name">الإضافات المسموحة</div>' + modules.map(function (m) {
+            var st = !m.allowed ? '🔒' : (m.on ? '🟢' : '✅');
+            return '<div class="act"><span>' + st + ' ' + esc(m.title) + ' (' + esc(m.id) + ')' + (m.ready ? '' : ' — قريبًا') + '</span>' +
+              '<button class="js-addon" data-id="' + esc(m.id) + '" data-allow="' + (m.allowed ? '0' : '1') + '">' + (m.allowed ? 'سحب' : 'منح') + '</button></div>';
+          }).join('') + '</div>' +
+          (plat.license ? '<div class="card"><div class="name">🔑 مفتاح الترخيص (أرسله للعميل مرة واحدة)</div><pre class="ltr text">' + esc(plat.license) + '</pre></div>' : '');
+        el.querySelector('.js-ext').onclick = function () {
+          var v = (el.querySelector('#p-ext') || {}).value;
+          runAdmin('extend', { id: t.id, value: v }, 'جارٍ التمديد…').then(function (r) { if (r && r.ok) { plat.detail = r.tenant; plat.license = ''; refresh().then(function () { plat.detail = r.tenant; renderPlatformDetail(); showTab('pdetail'); }); } });
+        };
+        var sus = el.querySelector('.js-sus');
+        if (sus) sus.onclick = function () { runAdmin('suspend', { id: t.id }).then(function (r) { if (r && r.ok) { plat.detail = r.tenant; refresh().then(function () { plat.detail = r.tenant; renderPlatformDetail(); showTab('pdetail'); }); } }); };
+        var resu = el.querySelector('.js-resu');
+        if (resu) resu.onclick = function () { runAdmin('resume', { id: t.id }).then(function (r) { if (r && r.ok) { plat.detail = r.tenant; refresh().then(function () { plat.detail = r.tenant; renderPlatformDetail(); showTab('pdetail'); }); } }); };
+        el.querySelectorAll('.js-addon').forEach(function (btn) {
+          btn.onclick = function () {
+            runAdmin('addon', { id: t.id, module: btn.getAttribute('data-id'), allow: btn.getAttribute('data-allow') === '1' }).then(function (r) {
+              if (r && r.ok) { plat.detail = r.tenant; renderPlatformDetail(); }
+            });
+          };
+        });
+      }
+      function openTenant(id) {
+        setStatus('جارٍ التحميل…');
+        api('tenant', { id: id }).then(function (r) {
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
+          plat.detail = r.tenant; plat.license = ''; setStatus(''); showTab('pdetail'); renderPlatformDetail();
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
+      function renderPlatformNew() {
+        var el = document.getElementById('view-pnew');
+        el.innerHTML = '<h2>عميل جديد</h2><label>المعرّف (لاتيني صغير، 2-20)</label><input id="p-id" class="ltr" placeholder="noor">' +
+          '<label>الاسم</label><input id="p-name" placeholder="مبادرة نور"><button class="js-add">➕ إنشاء</button>' +
+          (plat.license ? '<div class="card"><div class="name">🔑 مفتاح الترخيص</div><pre class="ltr text">' + esc(plat.license) + '</pre><div class="meta">أرسله للعميل ثم /activate في هذا البوت.</div></div>' : '');
+        el.querySelector('.js-add').onclick = function () {
+          var id = (el.querySelector('#p-id') || {}).value, name = (el.querySelector('#p-name') || {}).value;
+          runAdmin('addTenant', { id: id, name: name }, 'جارٍ الإنشاء…').then(function (r) {
+            if (r && r.ok) { plat.license = r.license || ''; plat.detail = r.tenant; refresh().then(function () { plat.license = r.license || ''; showTab('pnew'); renderPlatformNew(); }); }
+          });
+        };
+      }
+      function renderPlatformAll() {
+        document.getElementById('title').textContent = 'لوحة المنصة';
+        document.getElementById('user-email').hidden = true;
+        renderUser();
+        renderPlatformDash();
+        renderPlatformList();
+        renderPlatformNew();
+        if (plat.detail) renderPlatformDetail();
+        showTab(tab === 'submit' || tab === 'subs' || tab === 'grades' || tab === 'more' ? 'home' : tab);
+      }
+
       function setNav() {
         var nav = document.getElementById('nav');
-        if (isAdmin()) {
+        if (isPlatform) {
+          nav.innerHTML = '<button data-tab="home">🏠 اللوحة</button>' +
+            '<button data-tab="plist">👥 العملاء</button>' +
+            '<button data-tab="pnew">➕ جديد</button>';
+        } else if (isAdmin()) {
           nav.innerHTML = '<button data-tab="home">🏠 البرامج</button>' +
             '<button data-tab="review">📋 المراجعة</button>' +
             '<button data-tab="acts">⏸ الفعاليات</button>' +
@@ -677,12 +793,19 @@
 
       function showTab(name) {
         tab = name;
-        var tabs = isAdmin() ? ['home', 'review', 'acts', 'qaadmin', 'more'] : ['home', 'submit', 'subs', 'grades', 'more'];
-        ['home', 'submit', 'subs', 'grades', 'more', 'review', 'acts', 'qaadmin'].forEach(function (t) {
+        var allTabs = ['home', 'submit', 'subs', 'grades', 'more', 'review', 'acts', 'qaadmin', 'plist', 'pdetail', 'pnew'];
+        allTabs.forEach(function (t) {
           var n = document.getElementById('view-' + t);
           if (n) n.hidden = t !== name;
         });
         setNav();
+        if (isPlatform) {
+          if (name === 'home') renderPlatformDash();
+          if (name === 'plist') renderPlatformList();
+          if (name === 'pnew') renderPlatformNew();
+          if (name === 'pdetail') renderPlatformDetail();
+          return;
+        }
         if (isAdmin()) {
           if (name === 'home') renderAdminHome();
           if (name === 'acts') renderActs();
@@ -693,6 +816,7 @@
       function renderAll() {
         if (!data || !data.ok) return;
         if (!admin.pid && data.programs && data.programs[0]) admin.pid = data.programs[0].id;
+        if (isPlatform) { renderPlatformAll(); return; }
         renderUser();
         setNav();
         if (isAdmin()) {
@@ -723,9 +847,19 @@
       }
       function refresh() {
         return api('bootstrap').then(function (r) {
-          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر فتح التطبيق.', true); return r; }
+          if (!r || !r.ok) {
+            var msg = (r && (r.message || r.error)) || 'تعذر فتح التطبيق.';
+            setStatus(msg, true);
+            if (isPlatform) {
+              document.getElementById('title').textContent = 'لوحة المنصة';
+              document.getElementById('nav').hidden = true;
+              document.getElementById('view-home').innerHTML = '<div class="card"><div class="name">' + esc(msg) + '</div></div>';
+              document.getElementById('view-home').hidden = false;
+            }
+            return r;
+          }
           applyData(r, false);
-          try { localStorage.setItem(cacheKey, JSON.stringify({ ok: true, user: r.user, tenant: r.tenant, email: r.email, programs: r.programs || [], wird: r.wird, qa: r.qa, remindersOff: r.remindersOff, owner: r.owner, canReport: r.canReport, reportActive: r.reportActive, qaActive: r.qaActive, qaPending: r.qaPending, modules: r.modules, admins: r.admins })); } catch (e) {}
+          try { localStorage.setItem(cacheKey, JSON.stringify(isPlatform ? { ok: true, user: r.user, stats: r.stats, tenants: r.tenants, modules: r.modules } : { ok: true, user: r.user, tenant: r.tenant, email: r.email, programs: r.programs || [], wird: r.wird, qa: r.qa, remindersOff: r.remindersOff, owner: r.owner, canReport: r.canReport, reportActive: r.reportActive, qaActive: r.qaActive, qaPending: r.qaPending, modules: r.modules, admins: r.admins })); } catch (e) {}
           return r;
         });
       }
@@ -740,7 +874,7 @@
         var cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
         if (cached && cached.ok) { applyData(cached, true); setStatus('جارٍ التحديث…'); }
       } catch (e) {}
-      if (!tid) { setStatus('رابط غير مكتمل.', true); return; }
+      if (!isPlatform && !tid) { setStatus('رابط غير مكتمل.', true); return; }
       if (!initData) { setStatus('افتح التطبيق من تيليجرام.', true); return; }
       if (!apiUrl()) { setStatus('رابط الخادم غير مضبوط بعد.', true); return; }
       refresh().catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
