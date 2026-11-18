@@ -98,7 +98,14 @@
       var role = isPlatform ? 'platform' : (params.get('r') === 'admin' ? 'admin' : 'student');
       var plat = { q: '', detail: null, license: '' };
       var cacheKey = 'miniapp:bootstrap:' + tid + ':' + role;
-      var initData = (tg && tg.initData) || '';
+      function readInitData() {
+        if (tg && tg.initData) return tg.initData;
+        function pick(s) {
+          try { return (new URLSearchParams(s).get('tgWebAppData') || '').trim(); } catch (e) { return ''; }
+        }
+        return pick((location.hash || '').replace(/^#/, '')) || pick(location.search.slice(1)) || '';
+      }
+      var initData = readInitData();
       var data = null, tab = 'home', sel = { pid: '', activity: '', level: '' };
       var admin = { pid: '', filter: 'all', q: '', review: null, qa: null, settings: null, schedule: null, report: '', summary: '' };
       var statusEl = document.getElementById('status');
