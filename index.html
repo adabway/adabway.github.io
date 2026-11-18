@@ -422,14 +422,22 @@
           }).join('') || '<p class="hint">لا عملاء ينتهون خلال أسبوع.</p>');
         el.querySelectorAll('.js-popen').forEach(function (c) { c.onclick = function () { openTenant(c.getAttribute('data-id')); }; });
       }
-      function renderPlatformList() {
+      function usageText(u, full) {
+  if (!u || !u.lastActiveDay) return 'لا نشاط بعد';
+  var day = full && u.day ? ' ' + u.day : '';
+  var s = 'آخر نشاط ' + u.lastActiveDay + ' — اليوم' + day + ': ' + (u.updates || 0) + ' تحديثًا، ' + (u.app || 0) + ' طلبًا من التطبيق';
+  if (full) s += '، ' + (u.ticks || 0) + ' تشغيلًا للمشغّل';
+  return s;
+ }
+
+ function renderPlatformList() {
         var el = document.getElementById('view-plist');
         var list = data.tenants || [];
         el.innerHTML = '<h2>العملاء</h2><input id="p-q" placeholder="بحث بالمعرّف أو الاسم" value="' + esc(plat.q || '') + '">' +
           (list.map(function (t) {
             return '<div class="card js-popen" data-id="' + esc(t.id) + '"><div class="name">' + esc(t.name) + ' (' + esc(t.id) + ')</div>' +
               '<div class="meta">' + kindLabel(t.kind) + ' — حتى ' + esc(t.expiry || '—') + ' — حصة ' + esc(t.quota) +
-              ' — ' + (t.addons && t.addons.length ? esc(t.addons.join('، ')) : 'بلا إضافات') + '</div></div>';
+              ' — ' + (t.addons && t.addons.length ? esc(t.addons.join('، ')) : 'بلا إضافات') + '</div>' + '<div class="meta">' + esc(usageText(t.usage, false)) + '</div></div>';
           }).join('') || '<p class="hint">لا عملاء في هذا العرض.</p>');
         var q = el.querySelector('#p-q');
         if (q) q.onchange = function () {
@@ -451,7 +459,8 @@
           '<div class="card"><div class="name">' + kindLabel(t.kind) + '</div>' +
           '<div class="meta">الحالة: ' + esc(t.status) + (t.expiry ? ' — حتى ' + esc(t.expiry) : '') + (t.graceEnd ? ' — مهلة حتى ' + esc(t.graceEnd) : '') + '</div>' +
           '<div class="meta">الحصة: ' + esc(t.quota) + (t.programs != null ? ' — البرامج: ' + t.programs : '') + (t.setup ? ' — الإعداد: ' + esc(t.setup) : '') + '</div>' +
-          '<div class="meta">المالك: ' + esc(t.ownerId || '—') + (t.usage ? ' — اليوم: ' + t.usage.updates + ' تحديثًا' : '') + '</div>' +
+          '<div class="meta">المالك: ' + esc(t.ownerId || '—') + '</div>' +
+   '<div class="meta">الاستخدام: ' + esc(usageText(t.usage, true)) + '</div>' +
           (t.controlUrl ? '<a class="btn secondary" href="' + esc(t.controlUrl) + '" target="_blank">ملف التحكم</a>' : '') +
           '</div>' +
           '<div class="card"><div class="name">الترخيص</div>' +
