@@ -59,12 +59,12 @@
     }
     nav button { background: transparent; color: var(--text); flex: 1; padding: .45rem 0; font-size: .85rem; }
     nav button.active { color: var(--button); font-weight: 700; }
-  </style>
+  .skel{position:relative;overflow:hidden;background:var(--secondary);border-radius:.75rem;}.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(127,127,127,.18),transparent);animation:skel-shimmer 1.2s infinite;}@keyframes skel-shimmer{from{transform:translateX(100%);}to{transform:translateX(-100%);}}#skel .skel-title{height:1.4rem;width:55%;margin:.6rem 0;}#skel .skel-line{height:1rem;margin:.6rem 0;}#skel .skel-card{height:5.5rem;margin:.6rem 0;}</style>
 </head>
 <body>
   <main>
     <h1 id="title">التطبيق</h1>
-    <p id="status">جارٍ التحميل…</p>
+    <p id="status">جارٍ التحميل…</p><div id="skel" hidden><div class="skel skel-title"></div><div class="skel skel-line"></div><div class="skel skel-card"></div><div class="skel skel-card"></div></div>
     <section id="user" class="card" hidden>
       <div class="name" id="user-name"></div>
       <div class="meta" id="user-role"></div>
@@ -847,7 +847,7 @@
         renderMore();
         showTab(tab);
       }
-      function applyData(next, fromCache) {
+      function applyData(next, fromCache) { var sk = document.getElementById('skel'); if (sk) sk.hidden = true;
         data = next;
         renderAll();
         if (!fromCache) setStatus('');
@@ -856,7 +856,7 @@
         return api('bootstrap').then(function (r) {
           if (!r || !r.ok) {
             var msg = (r && (r.message || r.error)) || 'تعذر فتح التطبيق.';
-            setStatus(msg, true);
+            setStatus(msg, true); var sk3 = document.getElementById('skel'); if (sk3) sk3.hidden = true;
             if (isPlatform) {
               document.getElementById('title').textContent = 'لوحة المنصة';
               document.getElementById('nav').hidden = true;
@@ -884,7 +884,7 @@
       if (!isPlatform && !tid) { setStatus('رابط غير مكتمل.', true); return; }
       if (!initData) { setStatus('افتح التطبيق من تيليجرام.', true); return; }
       if (!apiUrl()) { setStatus('رابط الخادم غير مضبوط بعد.', true); return; }
-      refresh().catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      var sk1 = document.getElementById('skel'); if (sk1 && !(cached && cached.ok)) sk1.hidden = false; refresh().catch(function () { var sk2 = document.getElementById('skel'); if (sk2) sk2.hidden = true; setStatus('تعذر الاتصال بالخادم.', true); });
     })();
   </script>
 </body>
