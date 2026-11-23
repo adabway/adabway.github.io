@@ -6,70 +6,116 @@
   <title>التطبيق</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="config.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <style>
+    @font-face { font-family: 'thmanyah sans'; src: url('https://itsafwa.github.io/landingpage/assets/fonts/thmanyahsans-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+    @font-face { font-family: 'thmanyah sans'; src: url('https://itsafwa.github.io/landingpage/assets/fonts/thmanyahsans-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+    @font-face { font-family: 'thmanyah sans'; src: url('https://itsafwa.github.io/landingpage/assets/fonts/thmanyahsans-Bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
     :root {
       --bg: var(--tg-theme-bg-color, #ffffff);
-      --text: var(--tg-theme-text-color, #111111);
-      --hint: var(--tg-theme-hint-color, #888888);
-      --button: var(--tg-theme-button-color, #2481cc);
-      --button-text: var(--tg-theme-button-text-color, #ffffff);
-      --link: var(--tg-theme-link-color, #2481cc);
-      --secondary: var(--tg-theme-secondary-bg-color, #f4f4f5);
+      --text: var(--tg-theme-text-color, #16171f);
+      --hint: var(--tg-theme-hint-color, #7a7e90);
+      --secondary: var(--tg-theme-secondary-bg-color, #f4f5f9);
+      --brand: #1a1b35;
+      --brand-deep: #111224;
+      --brand-soft: #2a2d4f;
+      --accent: #d4af37;
+      --accent-dark: #80611b;
+      --line: rgba(127,127,127,.22);
+      --ok: #177245; --warn: #8a6d1a; --bad: #b3352c; --info: #2b5cb8;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; background: var(--bg); color: var(--text);
-      font-family: system-ui, "Segoe UI", Tahoma, "Noto Naskh Arabic", "Noto Sans Arabic", sans-serif; }
-    main { max-width: 40rem; margin: 0 auto; padding: 1rem 1rem 5.5rem; }
+      font-family: "thmanyah sans", system-ui, "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif; }
+    main { max-width: 42rem; margin: 0 auto; padding: 0 1rem 6rem; }
+    /* Brand band */
+    #brandbar { margin: 0 -1rem 1rem; padding: 1.05rem 1.15rem 1.15rem; color: #fff;
+      background: linear-gradient(150deg, var(--brand) 55%, var(--brand-deep));
+      border-radius: 0 0 1.5rem 1.5rem; box-shadow: 0 6px 22px rgba(10,11,25,.25); }
+    .brand-row { display: flex; align-items: center; gap: .8rem; }
+    #brand-logo { width: 3.1rem; height: 3.1rem; flex-shrink: 0; border-radius: 1rem; overflow: hidden;
+      background: rgba(255,255,255,.09); border: 1.5px solid var(--accent);
+      display: flex; align-items: center; justify-content: center; color: var(--accent); font-size: 1.45rem; }
+    #brand-logo img { width: 100%; height: 100%; object-fit: cover; }
+    #brand-name { font-size: 1.22rem; font-weight: 700; line-height: 1.3; }
+    #title { font-size: .88rem; font-weight: 500; margin: .1rem 0 0; opacity: .78; }
+    #user { margin-top: .85rem; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16);
+      border-radius: 1rem; padding: .65rem .9rem; }
+    #user .name { font-weight: 700; font-size: 1rem; }
+    #user .meta { color: rgba(255,255,255,.75); font-size: .85rem; margin-top: .15rem; }
+    #status { color: var(--hint); min-height: 1.2em; margin: .2rem 0 .6rem; }
+    #status[data-err="1"] { color: var(--bad); font-weight: 600; }
     h1 { font-size: 1.15rem; margin: 0 0 .35rem; }
-    h2 { font-size: 1.05rem; margin: 1.1rem 0 .5rem; }
-    .hint, #status { color: var(--hint); }
-    #status[data-err="1"] { color: #c0392b; }
+    h2 { font-size: 1.04rem; margin: 1.25rem 0 .55rem; padding-right: .6rem; border-right: 3.5px solid var(--accent); line-height: 1.5; }
+    .hint, .meta { color: var(--hint); }
+    .meta, .reason { font-size: .9rem; margin-top: .2rem; }
+    .reason { color: var(--warn); }
     [hidden] { display: none !important; }
-    .card { background: var(--secondary); border-radius: .75rem; padding: .85rem 1rem; margin: .6rem 0; }
+    .card { background: var(--secondary); border: 1px solid var(--line); border-radius: 1.1rem;
+      padding: .9rem 1.05rem; margin: .65rem 0; box-shadow: 0 1px 5px rgba(15,16,35,.05); }
     .name { font-weight: 700; }
-    .meta, .reason { color: var(--hint); font-size: .9rem; margin-top: .2rem; }
     .ltr { direction: ltr; unicode-bidi: isolate; text-align: left; }
-    .act { display: flex; justify-content: space-between; gap: .5rem; align-items: baseline; padding: .35rem 0; }
-    .badge { font-size: .8rem; white-space: nowrap; }
-    .badge.open { color: #1a7f37; } .badge.paused { color: #9a6700; }
-    .badge.submitted { color: #0969da; } .badge.rejected { color: #c0392b; }
+    .act { display: flex; justify-content: space-between; gap: .5rem; align-items: center; padding: .5rem 0; border-bottom: 1px dashed var(--line); }
+    .act:last-child { border-bottom: 0; }
+    .badge { font-size: .74rem; font-weight: 700; white-space: nowrap; border-radius: 999px; padding: .18rem .6rem; background: rgba(127,127,127,.14); }
+    .badge.open, .badge.approved { background: rgba(23,114,69,.14); color: var(--ok); }
+    .badge.paused, .badge.pending, .badge.reviewed { background: rgba(212,175,55,.18); color: var(--warn); }
+    .badge.submitted { background: rgba(43,92,184,.13); color: var(--info); }
+    .badge.rejected { background: rgba(179,53,44,.12); color: var(--bad); }
     button, .btn {
-      display: inline-block; border: 0; border-radius: .55rem; padding: .55rem .9rem; margin: .2rem .15rem 0 0;
-      background: var(--button); color: var(--button-text); font: inherit; cursor: pointer; text-decoration: none;
-    }
-    button.secondary { background: transparent; color: var(--link); padding-right: 0; }
+      display: inline-block; border: 0; border-radius: 999px; padding: .6rem 1.15rem; margin: .2rem .15rem 0 0;
+      background: var(--brand); color: #fff; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+      box-shadow: 0 2px 8px rgba(15,16,35,.16); transition: transform .08s ease, opacity .15s ease; }
+    button:active, .btn:active { transform: scale(.97); }
+    button.secondary { background: transparent; color: var(--accent-dark); box-shadow: none; padding-right: .4rem; padding-left: .4rem; }
+    button.danger { background: var(--bad); color: #fff; }
     input, textarea, select {
-      width: 100%; font: inherit; padding: .55rem .65rem; margin: .3rem 0; border-radius: .5rem;
-      border: 1px solid var(--hint); background: var(--bg); color: var(--text);
-    }
+      width: 100%; font: inherit; padding: .6rem .7rem; margin: .3rem 0; border-radius: .7rem;
+      border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+    input[type="checkbox"] { width: auto; }
+    label { display: block; font-size: .88rem; color: var(--hint); margin-top: .45rem; }
     textarea { min-height: 6rem; resize: vertical; }
     pre { white-space: pre-wrap; font: inherit; margin: 0; }
-    .wird html, .wird { white-space: pre-wrap; }
-    .wird a, a { color: var(--link); }
-    .sub-actions { margin-top: .45rem; }
-    .filters { display: flex; flex-wrap: wrap; gap: .35rem; margin: .4rem 0; }
-    .filters button, button.chip { background: transparent; color: var(--text); border: 1px solid var(--hint); padding: .3rem .6rem; }
-    .filters button.active, button.chip.active { background: var(--button); color: var(--button-text); border-color: transparent; }
-    button.danger { background: #c0392b; color: #fff; }
-    .text { white-space: pre-wrap; margin-top: .35rem; }
+    .wird { background: linear-gradient(140deg, var(--brand), var(--brand-soft)); color: #fff; border: 0; }
+    .wird .meta { color: rgba(255,255,255,.72); }
+    .wird a, a { color: var(--accent-dark); }
+    .wird a { color: var(--accent); }
+    .sub-actions { margin-top: .5rem; display: flex; flex-wrap: wrap; gap: .3rem; }
+    .filters { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0; }
+    .filters button, button.chip { background: transparent; color: var(--text); border: 1.5px solid var(--line); box-shadow: none; padding: .35rem .75rem; font-weight: 500; }
+    .filters button.active, button.chip.active { background: var(--brand); color: #fff; border-color: transparent; font-weight: 700; }
+    .text { white-space: pre-wrap; margin-top: .35rem; background: rgba(127,127,127,.08); border-radius: .8rem; padding: .7rem .85rem; }
     nav {
-      position: fixed; bottom: 0; left: 0; right: 0; background: var(--secondary);
-      display: flex; justify-content: space-around; padding: .4rem .3rem calc(.4rem + env(safe-area-inset-bottom));
-      border-top: 1px solid rgba(127,127,127,.25);
-    }
-    nav button { background: transparent; color: var(--text); flex: 1; padding: .45rem 0; font-size: .85rem; }
-    nav button.active { color: var(--button); font-weight: 700; }
-  .skel{position:relative;overflow:hidden;background:var(--secondary);border-radius:.75rem;}.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(127,127,127,.18),transparent);animation:skel-shimmer 1.2s infinite;}@keyframes skel-shimmer{from{transform:translateX(100%);}to{transform:translateX(-100%);}}#skel .skel-title{height:1.4rem;width:55%;margin:.6rem 0;}#skel .skel-line{height:1rem;margin:.6rem 0;}#skel .skel-card{height:5.5rem;margin:.6rem 0;}</style>
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+      background: var(--secondary); border-top: 1px solid var(--line);
+      display: flex; justify-content: space-around; padding: .35rem .25rem calc(.35rem + env(safe-area-inset-bottom));
+      box-shadow: 0 -4px 18px rgba(15,16,35,.07); }
+    nav button { background: transparent; color: var(--hint); box-shadow: none; flex: 1; margin: 0;
+      padding: .3rem 0 .2rem; font-size: .72rem; font-weight: 500;
+      display: flex; flex-direction: column; align-items: center; gap: .22rem; border-radius: .7rem; }
+    nav button i { font-size: 1.22rem; }
+    nav button.active { color: var(--brand); font-weight: 700; }
+    nav button.active i { color: var(--accent-dark); }
+  .skel{position:relative;overflow:hidden;background:var(--secondary);border-radius:1rem;}.skel::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(127,127,127,.16),transparent);animation:skel-shimmer 1.2s infinite;}@keyframes skel-shimmer{from{transform:translateX(100%);}to{transform:translateX(-100%);}}#skel .skel-title{height:1.4rem;width:55%;margin:.6rem 0;}#skel .skel-line{height:1rem;margin:.6rem 0;}#skel .skel-card{height:5.5rem;margin:.6rem 0;}</style>
 </head>
 <body>
   <main>
-    <h1 id="title">التطبيق</h1>
+    <header id="brandbar">
+      <div class="brand-row">
+        <div id="brand-logo"><i class="fa-solid fa-feather-pointed"></i></div>
+        <div>
+          <div id="brand-name">مبادرة صفوة</div>
+          <h1 id="title">التطبيق</h1>
+        </div>
+      </div>
+      <section id="user" hidden>
+        <div class="name" id="user-name"></div>
+        <div class="meta" id="user-role"></div>
+        <div class="meta ltr" id="user-email"></div>
+      </section>
+    </header>
     <p id="status">جارٍ التحميل…</p><div id="skel" hidden><div class="skel skel-title"></div><div class="skel skel-line"></div><div class="skel skel-card"></div><div class="skel skel-card"></div></div>
-    <section id="user" class="card" hidden>
-      <div class="name" id="user-name"></div>
-      <div class="meta" id="user-role"></div>
-      <div class="meta ltr" id="user-email"></div>
-    </section>
     <section id="view-home"></section>
     <section id="view-submit" hidden></section>
     <section id="view-subs" hidden></section>
@@ -83,11 +129,11 @@
     <section id="view-pnew" hidden></section>
   </main>
   <nav id="nav" hidden>
-    <button data-tab="home" class="active">🏠 الرئيسية</button>
-    <button data-tab="submit">📤 تسليم</button>
-    <button data-tab="subs">🗂 تسليماتي</button>
-    <button data-tab="grades">📊 درجاتي</button>
-    <button data-tab="more">⋯ المزيد</button>
+    <button data-tab="home" class="active"><i class="fa-solid fa-house"></i><span>الرئيسية</span></button>
+    <button data-tab="submit"><i class="fa-solid fa-paper-plane"></i><span>تسليم</span></button>
+    <button data-tab="subs"><i class="fa-solid fa-folder-open"></i><span>تسليماتي</span></button>
+    <button data-tab="grades"><i class="fa-solid fa-award"></i><span>درجاتي</span></button>
+    <button data-tab="more"><i class="fa-solid fa-ellipsis"></i><span>المزيد</span></button>
   </nav>
   <script>
     (function () {
@@ -523,21 +569,21 @@
       function setNav() {
         var nav = document.getElementById('nav');
         if (isPlatform) {
-          nav.innerHTML = '<button data-tab="home">🏠 اللوحة</button>' +
-            '<button data-tab="plist">👥 العملاء</button>' +
-            '<button data-tab="pnew">➕ جديد</button>';
+          nav.innerHTML = '<button data-tab="home"><i class="fa-solid fa-building-columns"></i><span>اللوحة</span></button>' +
+            '<button data-tab="plist"><i class="fa-solid fa-users"></i><span>العملاء</span></button>' +
+            '<button data-tab="pnew"><i class="fa-solid fa-plus"></i><span>جديد</span></button>';
         } else if (isAdmin()) {
-          nav.innerHTML = '<button data-tab="home">🏠 البرامج</button>' +
-            '<button data-tab="review">📋 المراجعة</button>' +
-            '<button data-tab="acts">⏸ الفعاليات</button>' +
-            (data.qaActive ? '<button data-tab="qaadmin">❓ الأسئلة</button>' : '') +
-            '<button data-tab="more">⋯ المزيد</button>';
+          nav.innerHTML = '<button data-tab="home"><i class="fa-solid fa-house"></i><span>البرامج</span></button>' +
+            '<button data-tab="review"><i class="fa-solid fa-clipboard-check"></i><span>المراجعة</span></button>' +
+            '<button data-tab="acts"><i class="fa-solid fa-bolt"></i><span>الفعاليات</span></button>' +
+            (data.qaActive ? '<button data-tab="qaadmin"><i class="fa-solid fa-circle-question"></i><span>الأسئلة</span></button>' : '') +
+            '<button data-tab="more"><i class="fa-solid fa-ellipsis"></i><span>المزيد</span></button>';
         } else {
-          nav.innerHTML = '<button data-tab="home">🏠 الرئيسية</button>' +
-            '<button data-tab="submit">📤 تسليم</button>' +
-            '<button data-tab="subs">🗂 تسليماتي</button>' +
-            '<button data-tab="grades">📊 درجاتي</button>' +
-            '<button data-tab="more">⋯ المزيد</button>';
+          nav.innerHTML = '<button data-tab="home"><i class="fa-solid fa-house"></i><span>الرئيسية</span></button>' +
+            '<button data-tab="submit"><i class="fa-solid fa-paper-plane"></i><span>تسليم</span></button>' +
+            '<button data-tab="subs"><i class="fa-solid fa-folder-open"></i><span>تسليماتي</span></button>' +
+            '<button data-tab="grades"><i class="fa-solid fa-award"></i><span>درجاتي</span></button>' +
+            '<button data-tab="more"><i class="fa-solid fa-ellipsis"></i><span>المزيد</span></button>';
         }
         Array.prototype.forEach.call(nav.querySelectorAll('button'), function (b) {
           b.classList.toggle('active', b.getAttribute('data-tab') === tab);
@@ -856,8 +902,31 @@
         renderMore();
         showTab(tab);
       }
+      function shadeHex(hex, f) {
+        var n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+        var t = f < 1 ? 0 : 255, p = Math.abs(f - 1);
+        r = Math.round((t - r) * p) + r; g = Math.round((t - g) * p) + g; b = Math.round((t - b) * p) + b;
+        return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+      }
+      function applyTheme() {
+        var t = (!isPlatform && data && data.tenant && data.tenant.theme) || {};
+        var brand = /^#[0-9a-fA-F]{6}$/.test(t.brand || '') ? t.brand : '#1a1b35';
+        var accent = /^#[0-9a-fA-F]{6}$/.test(t.accent || '') ? t.accent : '#d4af37';
+        var st = document.documentElement.style;
+        st.setProperty('--brand', brand);
+        st.setProperty('--brand-deep', shadeHex(brand, 0.7));
+        st.setProperty('--brand-soft', shadeHex(brand, 1.25));
+        st.setProperty('--accent', accent);
+        st.setProperty('--accent-dark', shadeHex(accent, 0.55));
+        var nm = document.getElementById('brand-name');
+        if (nm) nm.textContent = t.name || (data && data.tenant && data.tenant.name) || 'مبادرة صفوة';
+        var lg = document.getElementById('brand-logo');
+        if (lg) lg.innerHTML = t.logo ? '<img src="' + esc(t.logo) + '" alt="">' : '<i class="fa-solid fa-feather-pointed"></i>';
+        try { if (window.Telegram && Telegram.WebApp && Telegram.WebApp.setHeaderColor) Telegram.WebApp.setHeaderColor(brand); } catch (e) {}
+      }
       function applyData(next, fromCache) { var sk = document.getElementById('skel'); if (sk) sk.hidden = true;
         data = next;
+        applyTheme();
         renderAll();
         if (!fromCache) setStatus('');
       }
