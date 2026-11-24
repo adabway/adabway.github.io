@@ -191,6 +191,36 @@
         if (isPlatform) return base + '?b=app&r=platform';
         return base + '?b=app&t=' + encodeURIComponent(tid) + '&r=' + encodeURIComponent(role);
       }
+      // ── fast path (Worker) for «⏸ إيقاف» / «▶️ استئناف» on the tenants listed in config.js; script on any problem ──
+      var FAST_API = String(window.MINIAPP_FAST_API || '').replace(/\/+$/, '');
+      var FAST_TENANTS = window.MINIAPP_FAST_TENANTS || [];
+      function fastStatus(action, id) {
+        if (!isPlatform || !FAST_API || FAST_TENANTS.indexOf(id) < 0 || !window.fetch) return null;
+        var ctrl = window.AbortController ? new AbortController() : null;
+        var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 4000);
+        return fetch(FAST_API + '/app/platform', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: JSON.stringify({ initData: initData, action: action, id: id }),
+          signal: ctrl ? ctrl.signal : undefined
+        }).then(function (r) { return r.json(); }).then(function (r) { clearTimeout(timer); return r && r.ok && r.fast ? r : null; },
+          function () { clearTimeout(timer); return null; });
+      }
+      function fastMetric(opId, ms) {
+        try { fetch(FAST_API + '/app/platform', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ initData: initData, action: 'metric', opId: opId, ms: ms }) }).catch(function () {}); } catch (e) {}
+      }
+      function statusClick(action, t) {
+        var t0 = Date.now();
+        function done(r) { if (r && r.ok) { plat.detail = r.fast ? Object.assign({}, t, r.tenant) : r.tenant; syncTenantRow(plat.detail); renderPlatformDetail(); showTab('pdetail'); } return r; }
+        var fast = fastStatus(action, t.id);
+        if (!fast) return runAdmin(action, { id: t.id }).then(done);
+        setStatus('جارٍ التنفيذ…');
+        return fast.then(function (r) {
+          if (!r) return runAdmin(action, { id: t.id }).then(done);
+          setStatus(r.message || ''); done(r); fastMetric(r.opId, Date.now() - t0);
+          return r;
+        });
+      }
       function api(action, extra) {
         return fetch(apiUrl(), {
           method: 'POST',
@@ -540,9 +570,9 @@
         var cpn = el.querySelector('.js-copynew');
         if (cpn) cpn.onclick = function () { copyText(plat.license, cpn); };
         var sus = el.querySelector('.js-sus');
-        if (sus) sus.onclick = function () { runAdmin('suspend', { id: t.id }).then(function (r) { if (r && r.ok) { plat.detail = r.tenant; syncTenantRow(r.tenant); renderPlatformDetail(); showTab('pdetail'); } }); };
+        if (sus) sus.onclick = function () { statusClick('suspend', t); };
         var resu = el.querySelector('.js-resu');
-        if (resu) resu.onclick = function () { runAdmin('resume', { id: t.id }).then(function (r) { if (r && r.ok) { plat.detail = r.tenant; syncTenantRow(r.tenant); renderPlatformDetail(); showTab('pdetail'); } }); };
+        if (resu) resu.onclick = function () { statusClick('resume', t); };
         el.querySelectorAll('.js-addon').forEach(function (btn) {
           btn.onclick = function () {
             runAdmin('addon', { id: t.id, module: btn.getAttribute('data-id'), allow: btn.getAttribute('data-allow') === '1' }).then(function (r) {
