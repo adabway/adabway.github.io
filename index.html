@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>التطبيق</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="config.js"></script>
+  <script src="config.js?v=2"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <style>
     @font-face { font-family: 'thmanyah sans'; src: url('https://itsafwa.github.io/landingpage/assets/fonts/thmanyahsans-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
@@ -208,6 +208,57 @@
       }
       function fastMetric(opId, ms) {
         try { fetch(FAST_API + '/app/platform', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ initData: initData, action: 'metric', opId: opId, ms: ms }) }).catch(function () {}); } catch (e) {}
+      }
+      // ── batch 1: generic Worker fast path — dashboard bootstrap + activity pause/resume, WORKER_TENANTS only; script on any problem ──
+      var WORKER_TENANTS = window.WORKER_TENANTS || FAST_TENANTS;
+      function fastTenantOk() { return !!FAST_API && !!window.fetch && WORKER_TENANTS.indexOf(tid) >= 0; }
+      function tenantPath() { return '/app/tenant?t=' + encodeURIComponent(tid) + '&r=' + encodeURIComponent(params.get('r') || role); }
+      // fastCall(path, body, scriptCall, force): tries the Worker first (4s timeout); any {ok:false, fallback:true},
+      // any non-fast reply, network error or timeout → scriptCall() with the same request. `force` skips the tenant gate (platform dashboard).
+      function fastCall(path, body, scriptCall, force) {
+        if (!FAST_API || !window.fetch) return scriptCall();
+        if (!force && !fastTenantOk()) return scriptCall();
+        var ctrl = window.AbortController ? new AbortController() : null;
+        var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 4000);
+        return fetch(FAST_API + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: JSON.stringify(Object.assign({ initData: initData }, body || {})),
+          signal: ctrl ? ctrl.signal : undefined
+        }).then(function (r) { return r.json(); }).then(function (r) {
+          clearTimeout(timer);
+          if (!r || !r.fast || r.fallback) return scriptCall();
+          return r;
+        }, function () { clearTimeout(timer); return scriptCall(); });
+      }
+      function updateActLocal(r) {
+        var p = (data.programs || []).filter(function (x) { return x.id === pidOf(); })[0];
+        if (!p || !r || !r.act) return;
+        var a = (p.activities || []).filter(function (x) { return x.key === r.activity; })[0];
+        if (!a) return;
+        a.paused = !!r.act.paused;
+        a.scheduled = r.act.scheduled;
+        if (r.act.pauseLabel != null) a.pauseLabel = r.act.pauseLabel;
+      }
+      function actClick(kind, body) {
+        // Only day-based / until-further-notice pauses and resume go fast; explicit-date pauses stay on the script.
+        var eligible = kind === 'resume' || body.until === 'inf' || body.days != null;
+        if (!eligible || !fastTenantOk()) return runAdmin(kind, body).then(function (r) { if (r && r.ok) refresh(); });
+        var t0 = Date.now();
+        setStatus('جارٍ التنفيذ…');
+        return fastCall(tenantPath(), Object.assign({ action: kind }, body), function () { return api(kind, body); }).then(function (r) {
+          if (r && r.fast) {
+            if (!r.ok) { setStatus((r.message || r.error) || 'تعذر التنفيذ.', true); return r; }
+            setStatus(r.message || '');
+            updateActLocal(r);
+            renderActs();
+            if (r.opId) fastMetric(r.opId, Date.now() - t0);
+            return r;
+          }
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التنفيذ.', true); return r; }
+          setStatus(r.message || '');
+          return refresh();
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
       }
       function statusClick(action, t) {
         var t0 = Date.now();
@@ -733,12 +784,12 @@
           btn.onclick = function () {
             var body = { pid: pidOf(), activity: btn.parentNode.getAttribute('data-key') };
             if (btn.getAttribute('data-until')) body.until = 'inf'; else body.days = Number(btn.getAttribute('data-days'));
-            runAdmin('pause', body).then(function (r) { if (r && r.ok) refresh(); });
+            actClick('pause', body);
           };
         });
         el.querySelectorAll('.js-res').forEach(function (btn) {
           btn.onclick = function () {
-            runAdmin('resume', { pid: pidOf(), activity: btn.parentNode.getAttribute('data-key') }).then(function (r) { if (r && r.ok) refresh(); });
+            actClick('resume', { pid: pidOf(), activity: btn.parentNode.getAttribute('data-key') });
           };
         });
       }
@@ -986,8 +1037,25 @@
         renderAll();
         if (!fromCache) setStatus('');
       }
+      // ── batch 1: bootstrap source — Worker fast path on dashboard open only; later refreshes go straight to the script ──
+      var bootFastTried = false;
+      function storeCache(r) {
+        try { localStorage.setItem(cacheKey, JSON.stringify(isPlatform ? { ok: true, user: r.user, stats: r.stats, tenants: r.tenants, modules: r.modules } : { ok: true, user: r.user, tenant: r.tenant, email: r.email, programs: r.programs || [], wird: r.wird, qa: r.qa, remindersOff: r.remindersOff, owner: r.owner, canReport: r.canReport, reportActive: r.reportActive, qaActive: r.qaActive, qaPending: r.qaPending, modules: r.modules, admins: r.admins })); } catch (e) {}
+      }
+      function bootstrapCall() {
+        if (isPlatform) {
+          if (bootFastTried) return api('bootstrap');
+          bootFastTried = true;
+          return fastCall('/app/platform', { action: 'bootstrap' }, function () { return api('bootstrap'); }, true);
+        }
+        if (!bootFastTried && fastTenantOk()) {
+          bootFastTried = true;
+          return fastCall(tenantPath(), { action: 'bootstrap' }, function () { return api('bootstrap'); });
+        }
+        return api('bootstrap');
+      }
       function refresh() {
-        return api('bootstrap').then(function (r) {
+        return bootstrapCall().then(function (r) {
           if (!r || !r.ok) {
             var msg = (r && (r.message || r.error)) || 'تعذر فتح التطبيق.';
             setStatus(msg, true); var sk3 = document.getElementById('skel'); if (sk3) sk3.hidden = true;
@@ -1000,7 +1068,11 @@
             return r;
           }
           applyData(r, false);
-          try { localStorage.setItem(cacheKey, JSON.stringify(isPlatform ? { ok: true, user: r.user, stats: r.stats, tenants: r.tenants, modules: r.modules } : { ok: true, user: r.user, tenant: r.tenant, email: r.email, programs: r.programs || [], wird: r.wird, qa: r.qa, remindersOff: r.remindersOff, owner: r.owner, canReport: r.canReport, reportActive: r.reportActive, qaActive: r.qaActive, qaPending: r.qaPending, modules: r.modules, admins: r.admins })); } catch (e) {}
+          storeCache(r);
+          if (r.fast && r.stale) {
+            // Rendered the Worker's ready copy; refresh from the script in the background and re-render.
+            api('bootstrap').then(function (r2) { if (r2 && r2.ok) { applyData(r2, false); storeCache(r2); } }).catch(function () {});
+          }
           return r;
         });
       }
