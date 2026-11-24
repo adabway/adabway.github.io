@@ -260,7 +260,29 @@
           return refresh();
         }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
       }
-      function statusClick(action, t) {
+      function toggleOpenClick(pid, open) {
+        // batch 2: toggleOpen via the Worker fast path (test2 only); script on any problem.
+        // If the program is already in the requested state the Worker returns fallback,
+        // so the script replies with its «البرنامج أصلًا…» message.
+        if (!fastTenantOk()) return runAdmin('toggleOpen', { pid: pid, open: open }).then(function (r) { if (r && r.ok) refresh(); });
+        var t0 = Date.now();
+        setStatus('جارٍ التنفيذ…');
+        return fastCall(tenantPath(), { action: 'toggleOpen', pid: pid, open: open }, function () { return api('toggleOpen', { pid: pid, open: open }); }).then(function (r) {
+          if (r && r.fast) {
+            if (!r.ok) { setStatus((r.message || r.error) || 'تعذر التنفيذ.', true); return r; }
+            setStatus(r.message || '');
+            var p = progById(pid);
+            if (p && r.open != null) p.open = !!r.open;
+            renderAdminHome();
+            if (r.opId) fastMetric(r.opId, Date.now() - t0);
+            return r;
+          }
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التنفيذ.', true); return r; }
+          setStatus(r.message || '');
+          return refresh();
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
+function statusClick(action, t) {
         var t0 = Date.now();
         function done(r) { if (r && r.ok) { plat.detail = r.fast ? Object.assign({}, t, r.tenant) : r.tenant; syncTenantRow(plat.detail); renderPlatformDetail(); showTab('pdetail'); } return r; }
         var fast = fastStatus(action, t.id);
@@ -701,7 +723,7 @@
         el.querySelectorAll('.js-open').forEach(function (btn) {
           btn.onclick = function () {
             var pid = btn.parentNode.getAttribute('data-pid');
-            runAdmin('toggleOpen', { pid: pid, open: btn.getAttribute('data-open') === '1' }).then(function (r) { if (r && r.ok) refresh(); });
+            toggleOpenClick(pid, btn.getAttribute('data-open') === '1');
           };
         });
         el.querySelectorAll('.js-sum').forEach(function (btn) {
