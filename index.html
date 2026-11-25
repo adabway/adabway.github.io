@@ -175,7 +175,7 @@
       function bindPid(el) {
         var selEl = el.querySelector('#admin-pid');
         if (!selEl) return;
-        selEl.onchange = function () { admin.pid = selEl.value; admin.review = admin.qa = admin.settings = admin.schedule = admin.students = null; admin.summary = admin.report = ''; renderAll(); loadTab(tab); };
+        selEl.onchange = function () { admin.pid = selEl.value; admin.review = admin.qa = admin.settings = admin.schedule = admin.students = null; admin.wird = admin.wirdPreview = null; admin.summary = admin.report = ''; renderAll(); loadTab(tab); };
       }
       function runAdmin(action, body, msg) {
         setStatus(msg || 'جارٍ التنفيذ…');
@@ -986,6 +986,26 @@ function statusClick(action, t) {
             '<label>الجنس</label><select id="stu-gender"><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option></select>' +
             '<label>معرّف تيليجرام (اختياري — من الأمر /myid في البوت)</label><input id="stu-uid" placeholder="123456789" dir="ltr">' +
             '<button class="js-stuadd">➕ إضافة الطالب</button></div>';
+        html += '<div class="card"><div class="name">📖 منسّق الأوراد</div>';
+        if (admin.wird && admin.wird.materials) {
+          var wr = admin.wird;
+          html += '<div class="meta">أيام الراحة في البرنامج: ' + esc((wr.restNames || []).join('، ') || 'بلا أيام راحة') + '</div>';
+          html += '<label>عنوان المادة</label><input id="wird-title" placeholder="مثال: كتاب التوحيد">';
+          html += '<label>نوع المادة</label><select id="wird-type"><option value="مكتوبة">مكتوبة</option><option value="مرئية">مرئية (فيديو واحد)</option><option value="قائمة تشغيل">قائمة تشغيل يوتيوب</option></select>';
+          html += '<div id="wird-written"><label>من صفحة</label><input id="wird-sp" type="number" min="1"><label>إلى صفحة</label><input id="wird-ep" type="number" min="1"></div>';
+          html += '<div id="wird-video" hidden><label>رابط الفيديو</label><input id="wird-url" placeholder="https://youtu.be/…" dir="ltr"><label>يبدأ من (دقيقة:ثانية، اختياري)</label><input id="wird-ss" placeholder="0:00"><label>ينتهي عند (دقيقة:ثانية، اختياري)</label><input id="wird-es" placeholder=""><label>دقائق كل يوم</label><input id="wird-mpd" type="number" min="1" value="5"><label><input type="checkbox" id="wird-whole"> المادة كاملة في يوم واحد</label></div>';
+          html += '<div id="wird-playlist" hidden><label>رابط قائمة التشغيل</label><input id="wird-purl" placeholder="https://www.youtube.com/playlist?list=…" dir="ltr"><div id="wird-videos"></div></div>';
+          html += '<label>عدد الأيام (أو اتركه وحدّد التاريخين)</label><input id="wird-days" type="number" min="1"><label>تاريخ البداية</label><input id="wird-sd" type="date"><label>تاريخ النهاية</label><input id="wird-ed" type="date">';
+          html += '<label><input type="checkbox" id="wird-rest"> إضافة الأوراد في أيام الراحة أيضًا</label>';
+          html += '<label>أيام النشر (اترك الكل محددًا للنشر كل يوم عدا الراحة)</label><div id="wird-pdays">' + ['السبت','الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'].map(function (d) { return '<label><input type="checkbox" class="wird-pd" value="' + d + '" checked> ' + d + '</label>'; }).join(' ') + '</div>';
+          html += '<button class="js-wird-prev">👀 معاينة الأيام</button><div id="wird-preview"></div>';
+          html += '<div class="name">المواد المنسقة</div>' + (wr.materials.length ? wr.materials.map(function (m) {
+            return '<div class="act"><span>' + esc(m.title) + ' — ' + esc(m.type) + ' — ' + esc(m.status) + ' (' + (m.days || []).length + ' يومًا)</span>' + (m.status === 'نشطة' ? '<button class="danger js-wdel" data-id="' + esc(m.id) + '">حذف</button>' : '') + '</div>' + (m.days || []).map(function (d) {
+              return '<div class="act"><span>' + esc(d.date) + ' — ' + esc(d.text) + '</span>' + (m.status === 'نشطة' ? '<button class="secondary js-wedit" data-id="' + esc(m.id) + '" data-date="' + esc(d.date) + '" data-type="' + esc(m.type) + '">تعديل</button>' : '') + '</div>';
+            }).join('');
+          }).join('') : '<div class="hint">لا مواد منسقة بعد.</div>');
+        } else html += '<button class="js-wird-load">عرض منسّق الأوراد</button>';
+        html += '</div>';
           el.innerHTML = html;
           bindPid(el);
         var loadSch = el.querySelector('.js-load-sch');
@@ -1040,8 +1060,28 @@ function statusClick(action, t) {
               if (r && r.ok) { var n = el.querySelector('#stu-name'); if (n) n.value = ''; var e2 = el.querySelector('#stu-email'); if (e2) e2.value = ''; var u2 = el.querySelector('#stu-uid'); if (u2) u2.value = ''; loadStudents(); }
             });
           };
-        }
-        function loadSchedule() {
+        var wload = el.querySelector('.js-wird-load');
+        if (wload) wload.onclick = function () { loadWird(); };
+        var wtype = el.querySelector('#wird-type');
+        if (wtype) wtype.onchange = function () {
+          var t = wtype.value;
+          el.querySelector('#wird-written').hidden = t !== 'مكتوبة';
+          el.querySelector('#wird-video').hidden = t !== 'مرئية';
+          el.querySelector('#wird-playlist').hidden = t !== 'قائمة تشغيل';
+        };
+        var wprev = el.querySelector('.js-wird-prev');
+        if (wprev) wprev.onclick = function () { wirdPreview(); };
+        el.querySelectorAll('.js-wdel').forEach(function (btn) {
+          btn.onclick = function () {
+            if (!window.confirm('حذف هذه المادة وصفوفها المستقبلية؟')) return;
+            runAdmin('wirdDeleteMaterial', { pid: pidOf(), id: btn.getAttribute('data-id') }).then(function (r) { if (r && r.ok) loadWird(); });
+          };
+        });
+        el.querySelectorAll('.js-wedit').forEach(function (btn) {
+          btn.onclick = function () { wirdEditDay(btn); };
+        });
+      }
+      function loadSchedule() {
         api('schedule', { pid: pidOf() }).then(function (r) {
           if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
           admin.schedule = r; setStatus(''); renderAdminMore();
@@ -1051,6 +1091,91 @@ function statusClick(action, t) {
         api('settings', { pid: pidOf() }).then(function (r) {
           if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
           admin.settings = r; setStatus(''); renderAdminMore();
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
+            function wirdBody() {
+        var el = document.getElementById('view-more');
+        var type = (el.querySelector('#wird-type') || {}).value || 'مكتوبة';
+        var b = { pid: pidOf(), type: type, title: (el.querySelector('#wird-title') || {}).value || '' };
+        if (type === 'مكتوبة') {
+          b.startPage = Number((el.querySelector('#wird-sp') || {}).value);
+          b.endPage = Number((el.querySelector('#wird-ep') || {}).value);
+        } else if (type === 'مرئية') {
+          b.url = (el.querySelector('#wird-url') || {}).value || '';
+          b.startPos = (el.querySelector('#wird-ss') || {}).value || '';
+          b.endPos = (el.querySelector('#wird-es') || {}).value || '';
+          b.minutesPerDay = Number((el.querySelector('#wird-mpd') || {}).value) || 5;
+          b.wholeDay = !!(el.querySelector('#wird-whole') && el.querySelector('#wird-whole').checked);
+        } else {
+          b.url = (el.querySelector('#wird-purl') || {}).value || '';
+          b.videos = [];
+          el.querySelectorAll('.wird-vid').forEach(function (c) {
+            if (!c.checked) return;
+            var mpd = c.parentNode.querySelector('.wird-vmpd');
+            b.videos.push({ id: c.value, title: c.getAttribute('data-title') || '', minutesPerDay: mpd ? (Number(mpd.value) || 5) : 5 });
+          });
+        }
+        var dc = (el.querySelector('#wird-days') || {}).value;
+        if (dc) b.daysCount = Number(dc);
+        b.startDate = (el.querySelector('#wird-sd') || {}).value || '';
+        b.endDate = (el.querySelector('#wird-ed') || {}).value || '';
+        b.includeRest = !!(el.querySelector('#wird-rest') && el.querySelector('#wird-rest').checked);
+        var pd = [];
+        el.querySelectorAll('.wird-pd').forEach(function (c) { if (c.checked) pd.push(c.value); });
+        b.publishDays = pd.length === 7 ? '' : pd.join('، ');
+        return b;
+      }
+      function wirdPreview() {
+        var b = wirdBody();
+        setStatus('جارٍ المعاينة…');
+        api('wirdPreview', b).then(function (r) {
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر المعاينة.', true); return; }
+          setStatus('');
+          var el = document.getElementById('view-more');
+          if (r.videos) {
+            var box = el.querySelector('#wird-videos');
+            box.innerHTML = '<label><input type="checkbox" id="wird-all" checked> تحديد الكل</label>' + r.videos.map(function (v) {
+              return '<div class="act"><label><input type="checkbox" class="wird-vid" value="' + esc(v.id) + '" data-title="' + esc(v.title) + '" checked> ' + esc(v.title) + ' (' + Math.floor(v.seconds / 60) + ':' + ('0' + (v.seconds % 60)).slice(-2) + ')</label><input class="wird-vmpd" type="number" min="1" value="5" style="width:70px" placeholder="دقائق/يوم"></div>';
+            }).join('');
+            var all = el.querySelector('#wird-all');
+            if (all) all.onchange = function () { el.querySelectorAll('.wird-vid').forEach(function (c) { c.checked = all.checked; }); };
+            return;
+          }
+          admin.wirdPreview = r.days;
+          var pv = el.querySelector('#wird-preview');
+          pv.innerHTML = '<div class="meta">معاينة ' + r.days.length + ' يومًا' + (r.collisions ? ' — ' + r.collisions + ' متداخلة تُتخطّى' : '') + '</div>' +
+            r.days.map(function (d) { return '<div class="act"><span>' + esc(d.date) + ' — ' + esc(d.text) + '</span>' + (d.links ? '<a href="' + esc(d.links) + '" target="_blank">🔗</a>' : '') + '</div>'; }).join('') +
+            '<button class="js-wird-gen">✅ تأكيد التوليد</button>';
+          var gen = pv.querySelector('.js-wird-gen');
+          if (gen) gen.onclick = function () {
+            var bb = wirdBody();
+            bb.days = admin.wirdPreview;
+            runAdmin('wirdGenerate', bb, 'جارٍ التوليد…').then(function (rr) { if (rr && rr.ok) { admin.wirdPreview = null; loadWird(); } });
+          };
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
+      function wirdEditDay(btn) {
+        var id = btn.getAttribute('data-id'), date = btn.getAttribute('data-date'), type = btn.getAttribute('data-type');
+        var body = { pid: pidOf(), id: id, date: date };
+        if (type === 'مكتوبة') {
+          var from = window.prompt('من صفحة؟', '');
+          if (from == null) return;
+          var to = window.prompt('إلى صفحة؟', '');
+          if (to == null) return;
+          body.from = Number(from); body.to = Number(to);
+        } else {
+          var ss = window.prompt('يبدأ من (دقيقة:ثانية)؟', '');
+          if (ss == null) return;
+          var es = window.prompt('ينتهي عند (دقيقة:ثانية)؟', '');
+          if (es == null) return;
+          body.startPos = ss; body.endPos = es;
+        }
+        runAdmin('wirdEditDay', body, 'جارٍ التعديل…').then(function (r) { if (r && r.ok) loadWird(); });
+      }
+      function loadWird() {
+        api('wirdMaterials', { pid: pidOf() }).then(function (r) {
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
+          admin.wird = r; admin.wirdPreview = null; setStatus(''); renderAdminMore();
         }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
       }
       function loadStudents() {
