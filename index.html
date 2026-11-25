@@ -282,6 +282,27 @@
           return refresh();
         }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
       }
+      function pauseDateClick(body) {
+        // Pause-by-date via the Worker fast path (test2 only); script on any problem.
+        // Unlike actClick, explicit-date pauses go fast here: the Worker parses
+        // until/from exactly like parsePauseInput.
+        if (!fastTenantOk()) return runAdmin('pause', body).then(function (r) { if (r && r.ok) refresh(); });
+        var t0 = Date.now();
+        setStatus('جارٍ التنفيذ…');
+        return fastCall(tenantPath(), Object.assign({ action: 'pause' }, body), function () { return api('pause', body); }).then(function (r) {
+          if (r && r.fast) {
+            if (!r.ok) { setStatus((r.message || r.error) || 'تعذر التنفيذ.', true); return r; }
+            setStatus(r.message || '');
+            updateActLocal(r);
+            renderActs();
+            if (r.opId) fastMetric(r.opId, Date.now() - t0);
+            return r;
+          }
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التنفيذ.', true); return r; }
+          setStatus(r.message || '');
+          return refresh();
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
 function statusClick(action, t) {
         var t0 = Date.now();
         function done(r) { if (r && r.ok) { plat.detail = r.fast ? Object.assign({}, t, r.tenant) : r.tenant; syncTenantRow(plat.detail); renderPlatformDetail(); showTab('pdetail'); } return r; }
@@ -797,8 +818,9 @@ function statusClick(action, t) {
           return '<div class="card" data-key="' + esc(a.key) + '"><div class="name">' + esc(a.key) + '</div>' +
             '<div class="meta">' + esc(a.pauseLabel) + (a.points != null ? ' · ' + a.points + ' درجة' : '') + '</div>' +
             (a.paused
-              ? '<button class="js-res">▶️ تفعيل الآن</button>'
-              : '<button class="js-pz" data-days="1">إيقاف يوم</button><button class="js-pz" data-days="3">3 أيام</button><button class="js-pz" data-days="7">أسبوع</button><button class="js-pz" data-until="inf">حتى إشعار آخر</button>') +
+              ? '<button class="js-res">▶️ تفعيل الآن</button><button class="js-pdate">بتاريخ</button>'
+              : '<button class="js-pz" data-days="1">إيقاف يوم</button><button class="js-pz" data-days="3">3 أيام</button><button class="js-pz" data-days="7">أسبوع</button><button class="js-pz" data-until="inf">حتى إشعار آخر</button><button class="js-pdate">بتاريخ</button>') +
+            '<div class="js-pdate-box" hidden><label>حتى <input type="datetime-local" class="js-pdate-until"></label> <label>من <input type="datetime-local" class="js-pdate-from"></label> <button class="js-pdate-ok">تأكيد</button> <button class="js-pdate-cancel">إلغاء</button></div>' +
             '</div>';
         }).join('');
         bindPid(el);
@@ -812,6 +834,26 @@ function statusClick(action, t) {
         el.querySelectorAll('.js-res').forEach(function (btn) {
           btn.onclick = function () {
             actClick('resume', { pid: pidOf(), activity: btn.parentNode.getAttribute('data-key') });
+          };
+        });
+        el.querySelectorAll('.js-pdate').forEach(function (btn) {
+          btn.onclick = function () {
+            var box = btn.parentNode.querySelector('.js-pdate-box');
+            if (box) box.hidden = !box.hidden;
+          };
+        });
+        el.querySelectorAll('.js-pdate-cancel').forEach(function (btn) {
+          btn.onclick = function () { btn.parentNode.hidden = true; };
+        });
+        el.querySelectorAll('.js-pdate-ok').forEach(function (btn) {
+          btn.onclick = function () {
+            var box = btn.parentNode;
+            var until = (box.querySelector('.js-pdate-until') || {}).value;
+            var from = (box.querySelector('.js-pdate-from') || {}).value;
+            if (!until) { setStatus('اختر تاريخ حتى أولا.', true); return; }
+            var body = { pid: pidOf(), activity: box.parentNode.getAttribute('data-key'), until: until };
+            if (from) body.from = from;
+            pauseDateClick(body);
           };
         });
       }
