@@ -175,7 +175,7 @@
       function bindPid(el) {
         var selEl = el.querySelector('#admin-pid');
         if (!selEl) return;
-        selEl.onchange = function () { admin.pid = selEl.value; admin.review = admin.qa = admin.settings = admin.schedule = null; admin.summary = admin.report = ''; renderAll(); loadTab(tab); };
+        selEl.onchange = function () { admin.pid = selEl.value; admin.review = admin.qa = admin.settings = admin.schedule = admin.students = null; admin.summary = admin.report = ''; renderAll(); loadTab(tab); };
       }
       function runAdmin(action, body, msg) {
         setStatus(msg || 'جارٍ التنفيذ…');
@@ -740,7 +740,12 @@ function statusClick(action, t) {
             '<button class="js-open" data-open="' + (p.open ? '0' : '1') + '">' + (p.open ? '🔒 إغلاق التسليم' : '🔓 فتح التسليم') + '</button>' +
             '<button class="secondary js-sum">📊 الملخص</button></div>';
         }).join('') || '<p class="hint">لا برامج في نطاقك.</p>') +
-          (admin.summary ? '<div class="card"><pre>' + esc(admin.summary) + '</pre></div>' : '');
+          (admin.summary ? '<div class="card"><pre>' + esc(admin.summary) + '</pre></div>' : '') +
+          ((data.owner || data.adminCreateProgram) ? '<div class="card"><div class="name">➕ برنامج جديد</div>' +
+          '<label>اسم البرنامج</label><input id="np-name" placeholder="مثال: الدورة الثانية">' +
+          '<label>المستويات (مفصولة بفواصل — اتركها فارغة إن لم توجد)</label><input id="np-levels" placeholder="مثال: أول، ثانٍ، ثالث">' +
+          '<label>رابط التسجيل (رابط ملف الردود أو رابط الاستمارة — اختياري)</label><input id="np-reg" placeholder="https://…" dir="ltr">' +
+          '<button class="js-npadd">➕ إنشاء البرنامج</button></div>' : '');
         el.querySelectorAll('.js-open').forEach(function (btn) {
           btn.onclick = function () {
             var pid = btn.parentNode.getAttribute('data-pid');
@@ -753,10 +758,17 @@ function statusClick(action, t) {
             admin.pid = pid;
             runAdmin('summary', { pid: pid }, 'جارٍ إعداد الملخص…').then(function (r) {
               if (r && r.ok) { admin.summary = r.text; renderAdminHome(); }
-            });
+              });
+            };
+          });
+          var npAdd = el.querySelector('.js-npadd');
+          if (npAdd) npAdd.onclick = function () {
+            var nm = (el.querySelector('#np-name') || {}).value || '';
+            var lv = (el.querySelector('#np-levels') || {}).value || '';
+            var rg = (el.querySelector('#np-reg') || {}).value || '';
+            runAdmin('addProgram', { name: nm, levels: lv, regLink: rg }, 'جارٍ إنشاء البرنامج…').then(function (r) { if (r && r.ok) refresh(); });
           };
-        });
-      }
+        }
       function renderReview() {
         var el = document.getElementById('view-review');
         var items = admin.review || [];
@@ -959,8 +971,23 @@ function statusClick(action, t) {
             '<div id="adm-progs">' + (data.programs || []).map(function (p) { return '<label><input type="checkbox" class="adm-prog" value="' + esc(p.id) + '"> ' + esc(p.name || p.id) + '</label>'; }).join('') + '</div>' +
             '<button class="js-aadd">➕ إضافة / تحديث</button></div>';
         }
-        el.innerHTML = html;
-        bindPid(el);
+        html += '<div class="card"><div class="name">👥 الطلاب</div>';
+          if (admin.students) {
+            var st = admin.students;
+            if (!st.ok) html += '<div class="hint">تعذّر تحميل الطلاب.</div>';
+            else if (!st.regFile) html += '<div class="hint">لم يُربط ملف تسجيل بهذا البرنامج بعد — الصق رابطه في «الإعدادات» أولًا.</div>';
+            else html += (st.students || []).map(function (s) {
+              return '<div class="act"><span>' + esc(s.name || s.email) + ' — ' + esc(s.email) + (s.uid ? ' — <span dir="ltr">' + esc(s.uid) + '</span>' : ' — بلا معرّف تيليجرام') + '</span></div>';
+            }).join('') || '<div class="hint">لا طلاب مسجلين بعد في هذا البرنامج.</div>';
+            html += '<button class="secondary js-stuload">🔄 تحديث القائمة</button>';
+          } else html += '<button class="js-stuload">عرض الطلاب</button>';
+          html += '<label>الاسم</label><input id="stu-name" placeholder="اسم الطالب">' +
+            '<label>البريد</label><input id="stu-email" placeholder="name@example.com" dir="ltr">' +
+            '<label>الجنس</label><select id="stu-gender"><option value="ذكر">ذكر</option><option value="أنثى">أنثى</option></select>' +
+            '<label>معرّف تيليجرام (اختياري — من الأمر /myid في البوت)</label><input id="stu-uid" placeholder="123456789" dir="ltr">' +
+            '<button class="js-stuadd">➕ إضافة الطالب</button></div>';
+          el.innerHTML = html;
+          bindPid(el);
         var loadSch = el.querySelector('.js-load-sch');
         if (loadSch) loadSch.onclick = function () { loadSchedule(); };
         var loadSet = el.querySelector('.js-load-set');
@@ -1005,8 +1032,16 @@ function statusClick(action, t) {
           var progs = []; el.querySelectorAll('.adm-prog').forEach(function (c) { if (c.checked) progs.push(c.value); });
           runAdmin('addAdmin', { uid: (el.querySelector('#adm-id') || {}).value, name: (el.querySelector('#adm-name') || {}).value, all: !!(el.querySelector('#adm-all') && el.querySelector('#adm-all').checked), programs: progs }).then(function (r) { if (r && r.ok) { if (r.admins) data.admins = r.admins; renderAll(); } });
         };
-      }
-      function loadSchedule() {
+          var stuLoad = el.querySelector('.js-stuload');
+          if (stuLoad) stuLoad.onclick = function () { loadStudents(); };
+          var stuAdd = el.querySelector('.js-stuadd');
+          if (stuAdd) stuAdd.onclick = function () {
+            runAdmin('addStudent', { pid: pidOf(), name: (el.querySelector('#stu-name') || {}).value, email: (el.querySelector('#stu-email') || {}).value, gender: (el.querySelector('#stu-gender') || {}).value, uid: (el.querySelector('#stu-uid') || {}).value }, 'جارٍ إضافة الطالب…').then(function (r) {
+              if (r && r.ok) { var n = el.querySelector('#stu-name'); if (n) n.value = ''; var e2 = el.querySelector('#stu-email'); if (e2) e2.value = ''; var u2 = el.querySelector('#stu-uid'); if (u2) u2.value = ''; loadStudents(); }
+            });
+          };
+        }
+        function loadSchedule() {
         api('schedule', { pid: pidOf() }).then(function (r) {
           if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
           admin.schedule = r; setStatus(''); renderAdminMore();
@@ -1018,7 +1053,13 @@ function statusClick(action, t) {
           admin.settings = r; setStatus(''); renderAdminMore();
         }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
       }
-      function loadTab(name) {
+      function loadStudents() {
+          api('students', { pid: pidOf() }).then(function (r) {
+            if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
+            admin.students = r; setStatus(''); renderAdminMore();
+          }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+        }
+        function loadTab(name) {
         if (!isAdmin()) return;
         if (name === 'review') loadReview();
         if (name === 'qaadmin') loadQa();
