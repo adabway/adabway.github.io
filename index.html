@@ -1179,7 +1179,7 @@ function statusClick(action, t) {
           el.querySelectorAll('.wird-vid').forEach(function (c) {
             if (!c.checked) return;
             var mpd = c.parentNode.querySelector('.wird-vmpd');
-            b.videos.push({ id: c.value, title: c.getAttribute('data-title') || '', minutesPerDay: mpd ? (Number(mpd.value) || 5) : 5 });
+            b.videos.push({ id: c.value, title: c.getAttribute('data-title') || '', seconds: Number(c.getAttribute('data-seconds') || 0), minutesPerDay: mpd ? (Number(mpd.value) || 5) : 5 });
           });
         }
         var dc = (el.querySelector('#wird-days') || {}).value;
@@ -1201,10 +1201,12 @@ function statusClick(action, t) {
           var el = document.getElementById('view-more');
           if (r.videos) {
             var box = el.querySelector('#wird-videos');
+                        var defMpd = Number((el.querySelector('#wird-pmpd') || {}).value) || 5;
             box.innerHTML = '<label><input type="checkbox" id="wird-all" checked> تحديد الكل</label>' + r.videos.map(function (v) {
-              return '<div class="act"><label><input type="checkbox" class="wird-vid" value="' + esc(v.id) + '" data-title="' + esc(v.title) + '" checked> ' + esc(v.title) + ' (' + Math.floor(v.seconds / 60) + ':' + ('0' + (v.seconds % 60)).slice(-2) + ')</label><input class="wird-vmpd" type="number" min="1" value="5" style="width:70px" placeholder="دقائق/يوم"></div>';
+              return '<div class="act"><label><input type="checkbox" class="wird-vid" value="' + esc(v.id) + '" data-title="' + esc(v.title) + '" data-seconds="' + v.seconds + '" checked> ' + esc(v.title) + ' (' + Math.floor(v.seconds / 60) + ':' + ('0' + (v.seconds % 60)).slice(-2) + ')</label><input class="wird-vmpd" type="number" min="1" value="' + defMpd + '" style="width:70px" placeholder="دقائق/يوم"></div>';
             }).join('');
             var all = el.querySelector('#wird-all');
+            
             if (all) all.onchange = function () { el.querySelectorAll('.wird-vid').forEach(function (c) { c.checked = all.checked; }); };
             return;
           }
