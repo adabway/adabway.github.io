@@ -85,6 +85,7 @@ function handleAdminUpdate_(u) {
     return show_(ctx, ADMIN_HELP, [[{ text: '🏠 القائمة', callback_data: st.pid ? 'M' : 'L' }]]);
   }
   if (modWait_(ctx.uid)) { var mh = moduleHook_('onAdminMessage', [ctx, m]); if (mh !== undefined) return mh; }
+  if (tawasulEchoMediaFileId_(ctx, m)) return; // صورة/فيديو/ملف من مشرف بلا انتظار معلق → ردّ بمعرّفه للصقه في بطاقة التواصل
   if (st.await) return onAdminText_(ctx, st, text);
   if (st.pending) return send_(chat, 'لديك تعديل ينتظر التأكيد: اضغط «✅ تأكيد» أو «✖ إلغاء» في الرسالة السابقة، أو /start للبدء من جديد.');
   return send_(chat, 'لا أنتظر منك نصًّا الآن. استعمل الأزرار، أو اضغط /start للقائمة، أو /help للدليل.');

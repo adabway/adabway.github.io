@@ -1310,7 +1310,8 @@ var EVENT_TYPES = {
   WIRD_POSTED: 'wird_posted',
   QA_ASKED: 'qa_asked',
   QA_ANSWERED: 'qa_answered',
-  MONTHLY_REPORT: 'monthly_report'
+  MONTHLY_REPORT: 'monthly_report',
+  TAWASUL_POSTED: 'tawasul_posted'
 };
 var EVENT_QUEUE_ = [];
 var EVENT_SEQ_ = 0;
@@ -2730,6 +2731,13 @@ function handleMiniAppAdmin_(session, action, body) {
   if (action === 'wirdGenerate') return miniAppAdminWirdGenerate_(session, body);
   if (action === 'wirdEditDay') return miniAppAdminWirdEditDay_(session, body);
   if (action === 'wirdDeleteMaterial') return miniAppAdminWirdDeleteMaterial_(session, body);
+  if (action === 'tawasulChannels') return miniAppAdminTawasulChannels_(session, body);
+  if (action === 'tawasulAddChannel') return miniAppAdminTawasulAddChannel_(session, body);
+  if (action === 'tawasulToggleChannel') return miniAppAdminTawasulToggleChannel_(session, body);
+  if (action === 'tawasulRemoveChannel') return miniAppAdminTawasulRemoveChannel_(session, body);
+  if (action === 'tawasulPosts') return miniAppAdminTawasulPosts_(session, body);
+  if (action === 'tawasulCreatePost') return miniAppAdminTawasulCreatePost_(session, body);
+  if (action === 'tawasulRepost') return miniAppAdminTawasulRepost_(session, body);
   return { ok: false, error: 'unknown_action' };
 }
 
@@ -2752,6 +2760,7 @@ function miniAppAdminBootstrap_(session) {
     canReport: miniAppAdminCanReport_(adm),
     reportActive: isModuleActive_('monthlyReport'),
     qaActive: isModuleActive_('studentQA'),
+    tawasulActive: isModuleActive_('tawasul'),
     programs: programs,
     qaPending: isModuleActive_('studentQA') ? miniAppAdminQaCount_(adm) : 0
   };
@@ -3722,7 +3731,8 @@ var MODULES = {
     ready: true, events: [], studentHelp: '/app فتح التطبيق',
     onEnable: function () { return miniAppOnEnable_(); },
     onDisable: function () { return miniAppOnDisable_(); } },
-  tasks: { title: '✅ المهام', desc: 'قريبًا', ready: false, events: [] }
+  tasks: { title: '✅ المهام', desc: 'قريبًا', ready: false, events: [] },
+  tawasul: { title: '📣 التواصل', desc: 'يكتب المشرف المنشور مرة واحدة، ويختار القنوات التي يُنشر فيها، فتنشره الوحدة في موعده وتسجّله في جدول تتبع.', ready: true, events: [], onTick: function (now, budgetEnd) { return tawasulTick_(now, budgetEnd); } }
 };
 
 var ADDON_LOCKED_TEXT = '🔒 غير مشمولة في اشتراكك — تواصل معنا';

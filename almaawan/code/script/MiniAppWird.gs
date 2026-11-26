@@ -87,9 +87,9 @@ function wirdCoordParseDateInput_(s) {
   return d;
 }
 
-/** يقسّم total صفحة على days يومًا؛ الباقي للأيام الأولى. */
-function wirdCoordSplitPages_(total, days) {
-  var base = Math.floor(total / days), rem = total % days, out = [], cur = 1;
+/** يقسّم total صفحة على days يومًا بدءًا من صفحة start؛ الباقي للأيام الأولى. */
+function wirdCoordSplitPages_(total, days, start) {
+  var base = Math.floor(total / days), rem = total % days, out = [], cur = start || 1;
   for (var i = 0; i < days; i++) {
     var n = base + (i < rem ? 1 : 0);
     out.push({ from: cur, to: cur + n - 1 });
@@ -377,7 +377,6 @@ function wirdCoordPreviewWritten_(prog, b) {
   var total = ep - sp + 1;
   var start = wirdCoordParseDateInput_(b.startDate) || wirdCoordTomorrow_();
   var today = wirdCoordToday_();
-  if (start.getTime() < today.getTime()) throw new Error('تاريخ البداية في الماضي؛ الفائت لا يُعوَّض.');
   var daysCount = b.daysCount != null && b.daysCount !== '' ? Math.floor(Number(b.daysCount)) : null;
   var end = wirdCoordParseDateInput_(b.endDate);
   if (daysCount != null && end) throw new Error('اختر إما عدد الأيام أو تاريخي البداية والنهاية، لا كليهما.');
@@ -395,8 +394,9 @@ function wirdCoordPreviewWritten_(prog, b) {
   var dates = wirdCoordPublishDates_(start, daysCount, end, restDays, publishDays, includeRest);
   if (daysCount != null && dates.length < daysCount) throw new Error('تعذّر إيجاد ' + daysCount + ' أيام نشر — راجع أيام الراحة وأيام النشر.');
   if (!dates.length) throw new Error('لا أيام نشر في المدة المحددة — راجع أيام الراحة وأيام النشر.');
+  if (!dates.some(function (d) { return d.getTime() >= today.getTime(); })) throw new Error('كل أيام النشر في الماضي — اختر بداية أحدث أو مدة أطول.');
   var n = Math.min(dates.length, total);
-  var split = wirdCoordSplitPages_(total, n);
+  var split = wirdCoordSplitPages_(total, n, sp);
   var days = [];
   for (var d = 0; d < n; d++) {
     days.push({
@@ -421,7 +421,6 @@ function wirdCoordPreviewVideo_(prog, b) {
   if (!whole && (perDay < 60 || perDay > 12 * 3600)) throw new Error('الدقائق اليومية بين 1 و720.');
   var start = wirdCoordParseDateInput_(b.startDate) || wirdCoordTomorrow_();
   var today = wirdCoordToday_();
-  if (start.getTime() < today.getTime()) throw new Error('تاريخ البداية في الماضي؛ الفائت لا يُعوَّض.');
   var daysCount = b.daysCount != null && b.daysCount !== '' ? Math.floor(Number(b.daysCount)) : null;
   var end = wirdCoordParseDateInput_(b.endDate);
   if (daysCount != null && end) throw new Error('اختر إما عدد الأيام أو تاريخي البداية والنهاية، لا كليهما.');
@@ -436,6 +435,7 @@ function wirdCoordPreviewVideo_(prog, b) {
   if (daysCount != null && dates.length < daysCount) throw new Error('تعذّر إيجاد ' + daysCount + ' أيام نشر — راجع أيام الراحة وأيام النشر.');
   if (dates.length < needDays) throw new Error('المدة المحددة تكفي ' + dates.length + ' يومًا فقط، والمقطع يحتاج ' + needDays + ' أيام بهذا المعدل اليومي.');
   if (!dates.length) throw new Error('لا أيام نشر في المدة المحددة.');
+  if (!dates.some(function (d) { return d.getTime() >= today.getTime(); })) throw new Error('كل أيام النشر في الماضي — اختر بداية أحدث أو مدة أطول.');
   var videoTitle = title || info.title;
   var days = [], cur = startSec;
   for (var d = 0; d < needDays; d++) {
@@ -451,17 +451,19 @@ function wirdCoordPreviewVideo_(prog, b) {
   return { days: days, totalSeconds: endSec - startSec, videoTitle: info.title, videoId: info.id, restDays: restDays, startDate: dayKey_(start), endDate: end ? dayKey_(end) : null, daysCount: daysCount };
 }
 
-/** يبني أيام قائمة تشغيل: كل محاضرة يوم (أو أكثر إن طالت عن المعدل اليومي). */
+/** يبني أيام قائمة تشغيل على خطوتين: بلا محاضرات مختارة يعيد قائمة المحاضرات للاختيار منها؛
+ * وبمحاضرات مختارة يبني الأيام منها فقط، كل محاضرة بمعدلها اليومي. */
 function wirdCoordPreviewPlaylist_(prog, b) {
   var title = str_(b.title || '');
   if (title.length < 2 || title.length > 100) throw new Error('عنوان المادة بين حرفين و100 حرف.');
-  var items = ytPlaylistItems_(b.url || '');
-  if (!items.length) throw new Error('قائمة التشغيل فارغة أو غير متاحة.');
-  var perDay = Math.floor(Number(b.minutesPerDay || 0)) * 60;
-  if (perDay < 60 || perDay > 12 * 3600) throw new Error('الدقائق اليومية بين 1 و720.');
+  var sel = b.videos;
+  if (!sel || !sel.length) {
+    var items = ytPlaylistItems_(b.url || '');
+    if (!items.length) throw new Error('قائمة التشغيل فارغة أو غير متاحة.');
+    return { videos: items };
+  }
   var start = wirdCoordParseDateInput_(b.startDate) || wirdCoordTomorrow_();
   var today = wirdCoordToday_();
-  if (start.getTime() < today.getTime()) throw new Error('تاريخ البداية في الماضي؛ الفائت لا يُعوَّض.');
   var daysCount = b.daysCount != null && b.daysCount !== '' ? Math.floor(Number(b.daysCount)) : null;
   var end = wirdCoordParseDateInput_(b.endDate);
   if (daysCount != null && end) throw new Error('اختر إما عدد الأيام أو تاريخي البداية والنهاية، لا كليهما.');
@@ -474,13 +476,17 @@ function wirdCoordPreviewPlaylist_(prog, b) {
   var dates = wirdCoordPublishDates_(start, daysCount, end, restDays, publishDays, includeRest);
   if (daysCount != null && dates.length < daysCount) throw new Error('تعذّر إيجاد ' + daysCount + ' أيام نشر — راجع أيام الراحة وأيام النشر.');
   if (!dates.length) throw new Error('لا أيام نشر في المدة المحددة.');
+  if (!dates.some(function (d) { return d.getTime() >= today.getTime(); })) throw new Error('كل أيام النشر في الماضي — اختر بداية أحدث أو مدة أطول.');
   var days = [], di = 0;
-  for (var i = 0; i < items.length && di < dates.length; i++) {
-    var it = items[i];
-    if (!it.seconds) continue;
+  for (var i = 0; i < sel.length && di < dates.length; i++) {
+    var it = sel[i];
+    var seconds = Math.floor(Number(it.seconds || 0));
+    if (!seconds) continue;
+    var perDay = Math.floor(Number(it.minutesPerDay || b.minutesPerDay || 5)) * 60;
+    if (perDay < 60 || perDay > 12 * 3600) throw new Error('الدقائق اليومية بين 1 و720.');
     var cur = 0;
-    while (cur < it.seconds && di < dates.length) {
-      var to = Math.min(it.seconds, cur + perDay);
+    while (cur < seconds && di < dates.length) {
+      var to = Math.min(seconds, cur + perDay);
       days.push({
         date: dayKey_(dates[di]), title: it.title,
         text: 'من ' + ytFormatClock_(cur) + ' إلى ' + ytFormatClock_(to),
@@ -492,21 +498,22 @@ function wirdCoordPreviewPlaylist_(prog, b) {
     }
   }
   if (!days.length) throw new Error('لا أيام نشر كافية لمواد القائمة.');
-  return { days: days, lectures: items.length, restDays: restDays, startDate: dayKey_(start), endDate: end ? dayKey_(end) : null, daysCount: daysCount };
+  return { days: days, lectures: sel.length, restDays: restDays, startDate: dayKey_(start), endDate: end ? dayKey_(end) : null, daysCount: daysCount };
 }
 
-/** يتحقق من أيام مرسلة من الواجهة (بعد تعديل المعاينة): تواريخ صالحة، بلا تكرار، وفي المستقبل. */
+/** يتحقق من أيام مرسلة من الواجهة (بعد تعديل المعاينة): تواريخ صالحة، بلا تكرار، ويوم قادم واحد على الأقل. */
 function wirdCoordValidateDays_(days) {
   if (!days || !days.length || days.length > 365) throw new Error('جدول الأيام غير صالح.');
-  var seen = {}, today = wirdCoordToday_();
+  var seen = {}, today = wirdCoordToday_(), hasFuture = false;
   for (var i = 0; i < days.length; i++) {
     var d = days[i];
     if (!d.date || !wirdCoordParseDateInput_(d.date)) throw new Error('تاريخ غير صالح في اليوم ' + (i + 1) + '.');
     if (seen[d.date]) throw new Error('تاريخ مكرر في الجدول: ' + d.date + '.');
     seen[d.date] = true;
-    if (wirdCoordParseDateInput_(d.date).getTime() < today.getTime()) throw new Error('تاريخ في الماضي: ' + d.date + ' — الفائت لا يُعوَّض.');
+    if (wirdCoordParseDateInput_(d.date).getTime() >= today.getTime()) hasFuture = true;
     if (!d.title || !d.text) throw new Error('يوم بلا عنوان أو نص: ' + d.date + '.');
   }
+  if (!hasFuture) throw new Error('كل أيام الجدول في الماضي — لا شيء سيُنشر.');
   days.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
   return days;
 }

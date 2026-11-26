@@ -1884,7 +1884,7 @@ var TENANT_CONF_DEFAULTS = {
   ownedFilesOnly: true,      // «البرامج» تقبل فقط ملفات أنشأتها الخدمة (OWNED_FILES)            // يحل محل مشغّل «الحساب التلقائي كل ساعة» الذي كان مرتبطًا بملف الدرجات
   reviewChatId: '',          // مجموعة المراجعة الافتراضية للبرامج الجديدة (من معالج الإعداد)
   template: { activities: ['مشاركة', 'واجب', 'نقاش'], passMark: 60 },
-  modules: { quizImport: false, dailyWird: false, studentQA: false, monthlyReport: false, miniApp: false, tasks: false }
+  modules: { quizImport: false, dailyWird: false, studentQA: false, monthlyReport: false, miniApp: false, tasks: false, tawasul: false }
 };
 function tenantConf_() {
   var raw = prop_('CONF'), c = {};
