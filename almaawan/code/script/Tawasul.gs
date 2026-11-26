@@ -205,13 +205,25 @@ function tawasulEchoMediaFileId_(ctx, m) {
 /** التحقق الفوري: القناة موجودة والبوت مشرف فيها بصلاحية النشر. يعيد {ok, id, title, username} أو {ok:false, error} */
 function tawasulVerifyAdmin_(chatRef) {
   var chat = tawasulTg_('getChat', { chat_id: chatRef });
-  if (!chat.ok) return { ok: false, error: 'القناة أو المجموعة غير موجودة أو البوت ليس عضوًا فيها' + (chat.description ? ' (' + chat.description + ')' : '') };
+  if (!chat.ok) return { ok: false, permanent: tawasulIsPermanentError_(chat), error: 'القناة أو المجموعة غير موجودة أو البوت ليس عضوًا فيها' + (chat.description ? ' (' + chat.description + ')' : '') };
   var me = tawasulTg_('getMe', {});
-  if (!me.ok) return { ok: false, error: 'تعذّر معرفة معرّف البوت (getMe)' };
+  if (!me.ok) return { ok: false, permanent: false, error: 'تعذّر معرفة معرّف البوت (getMe)' };
   var member = tawasulTg_('getChatMember', { chat_id: chat.result.id, user_id: me.result.id });
-  if (!member.ok || member.result.status !== 'administrator' || member.result.can_post_messages === false)
-    return { ok: false, error: 'البوت ليس مشرفًا بصلاحية النشر في القناة أو المجموعة — أضفه مشرفًا بصلاحية النشر أولًا' };
+  if (!member.ok) return { ok: false, permanent: tawasulIsPermanentError_(member), error: 'تعذّر التحقق من إشراف البوت' + (member.description ? ' (' + member.description + ')' : '') };
+  if (member.result.status !== 'administrator' || member.result.can_post_messages === false)
+    return { ok: false, permanent: true, error: 'البوت ليس مشرفًا بصلاحية النشر في القناة أو المجموعة — أضفه مشرفًا بصلاحية النشر أولًا' };
   return { ok: true, id: String(chat.result.id), title: str_(chat.result.title), username: str_(chat.result.username) };
+}
+
+/** خطأ تيليجرام دائم (القناة محذوفة/البوت مطرود) أم عابر (شبكة/حدّ/عطل)؟ العابر لا يوقف القناة أبدًا. */
+function tawasulIsPermanentError_(out) {
+  if (!out) return false;
+  var code = Number(out.error_code || 0);
+  if (code === 400 || code === 403) return true;
+  if (code === 429 || code >= 500) return false;
+  var d = String(out.description || '').toLowerCase();
+  if (/chat not found|bot was kicked|bot is not a member|forbidden|user not found|chat_id is empty/i.test(d)) return true;
+  return false;
 }
 
 /** إضافة قناة (أو تحديثها إن كانت موجودة): تحقق ثم إلحاق/تحديث صف. يعيد {ok, channel, existed} أو {ok:false, error} */
@@ -272,8 +284,10 @@ function tawasulEnsureChannelVerified_(ch) {
     ch.title = v.title; ch.username = v.username; ch.verifiedAt = new Date();
     return { ok: true };
   }
-  sh.getRange(ch.row, 7, 1, 1).setValues([['لا']]);
-  ch.active = false;
+  if (v.permanent) {
+    sh.getRange(ch.row, 7, 1, 1).setValues([['لا']]);
+    ch.active = false;
+  }
   return { ok: false, error: v.error };
 }
 
@@ -300,11 +314,13 @@ function tawasulCreatePost_(o) {
   if (!o.destIds || !o.destIds.length) return { ok: false, error: 'اختر قناة واحدة على الأقل.' };
   var chans = tawasulReadChannels_(), byId = {};
   chans.forEach(function (c) { byId[c.channelId] = c; });
-  var dests = [];
+  var dests = [], seen = {};
   for (var i = 0; i < o.destIds.length; i++) {
     var c = byId[String(o.destIds[i])];
     if (!c) return { ok: false, error: 'قناة غير موجودة في القائمة: ' + o.destIds[i] };
     if (!c.active) return { ok: false, error: 'القناة «' + (c.title || c.channelId) + '» موقوفة — فعّلها أولًا.' };
+    if (seen[c.channelId]) continue; // وجهة مكررة — تُحفظ مرة واحدة
+    seen[c.channelId] = true;
     dests.push({ platform: 'telegram', channel_id: c.channelId });
   }
   var sched = o.scheduledAt ? new Date(o.scheduledAt) : null;
@@ -334,12 +350,15 @@ function tawasulPublishOne_(post, channelId) {
     : { channel_id: String(channelId), status: 'فشل', error: (out.description || 'خطأ غير معروف') };
 }
 
-/** حالة المنشور الإجمالية من نتائج وجهاته */
+/** حالة المنشور الإجمالية من نتائج وجهاته — تُقاس بالوجهات الفريدة (فالمكررة لا تُبقي المنشور جزئيًا). */
 function tawasulAggregateStatus_(results, dests) {
-  var done = results.filter(function (r) { return r.status === 'نُشر'; }).length;
   if (!results.length) return TAWASUL_STATUS.SCHEDULED;
-  if (done === dests.length) return TAWASUL_STATUS.PUBLISHED;
-  if (done > 0) return TAWASUL_STATUS.PARTIAL;
+  var uniqDests = {}, uniqDone = {};
+  dests.forEach(function (d) { uniqDests[String(d.channel_id)] = 1; });
+  results.forEach(function (r) { if (r.status === 'نُشر') uniqDone[String(r.channel_id)] = 1; });
+  var nDest = Object.keys(uniqDests).length, nDone = Object.keys(uniqDone).length;
+  if (nDest > 0 && nDone === nDest) return TAWASUL_STATUS.PUBLISHED;
+  if (nDone > 0) return TAWASUL_STATUS.PARTIAL;
   return TAWASUL_STATUS.FAILED;
 }
 
