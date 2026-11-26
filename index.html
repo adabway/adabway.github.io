@@ -175,7 +175,7 @@
       function bindPid(el) {
         var selEl = el.querySelector('#admin-pid');
         if (!selEl) return;
-        selEl.onchange = function () { admin.pid = selEl.value; admin.review = admin.qa = admin.settings = admin.schedule = admin.students = null; admin.wird = admin.wirdPreview = null; admin.summary = admin.report = ''; renderAll(); loadTab(tab); };
+        selEl.onchange = function () { admin.pid = selEl.value; admin.review = admin.qa = admin.settings = admin.schedule = admin.students = null; admin.wird = admin.wirdPreview = null; admin.tawasul = null; admin.summary = admin.report = ''; renderAll(); loadTab(tab); };
       }
       function runAdmin(action, body, msg) {
         setStatus(msg || 'جارٍ التنفيذ…');
@@ -1006,6 +1006,36 @@ function statusClick(action, t) {
           }).join('') : '<div class="hint">لا مواد منسقة بعد.</div>');
         } else html += '<button class="js-wird-load">عرض منسّق الأوراد</button>';
         html += '</div>';
+        if (data.tawasulActive) {
+          html += '<div class="card"><div class="name">📣 التواصل</div>';
+          if (admin.tawasul) {
+            var tw = admin.tawasul;
+            html += '<div class="name">قنواتي</div>' + ((tw.channels || []).map(function (c) {
+              return '<div class="act"><span>' + esc(c.title || c.channelId) + (c.username ? ' — ' + esc(c.username) : '') + ' — ' + (c.active ? '🟢 نشطة' : '⚪️ موقوفة') + '</span>' + (tw.owner ? '<button class="secondary js-tw-chtoggle" data-id="' + esc(c.channelId) + '" data-active="' + (c.active ? '0' : '1') + '">' + (c.active ? 'إيقاف' : 'تفعيل') + '</button><button class="danger js-tw-chdel" data-id="' + esc(c.channelId) + '">حذف</button>' : '') + '</div>';
+            }).join('') || '<div class="hint">لا قنوات بعد.</div>');
+            html += '<label>معرّف القناة أو اسمها أو رابطها</label><input id="tw-ch" placeholder="-100… أو @… أو t.me/…" dir="ltr"><button class="js-tw-chadd">➕ إضافة قناة</button>';
+            html += '<div class="name">منشور جديد</div><label>النص</label><textarea id="tw-text" rows="3" placeholder="نص المنشور"></textarea>' +
+              '<label>الوسائط (اختياري)</label><select id="tw-media"><option value="">بلا وسائط</option><option value="photo">صورة</option><option value="video">فيديو</option><option value="document">ملف</option></select>' +
+              '<label>معرّف الوسائط file_id (إن وجدت وسائط)</label><input id="tw-fileid" placeholder="file_id" dir="ltr">' +
+              '<label>القنوات</label><div>' + ((tw.channels || []).filter(function (c) { return c.active; }).map(function (c) { return '<label><input type="checkbox" class="tw-ch" value="' + esc(c.channelId) + '" checked> ' + esc(c.title || c.channelId) + '</label>'; }).join(' ') || '<div class="hint">أضف قناة نشطة أولًا.</div>') + '</div>' +
+              '<label>الموعد (اتركه فارغًا للنشر الفوري)</label><input id="tw-when" type="datetime-local">' +
+              '<div class="hint">المنشور المجدول يُنشر خلال الساعة المحددة (دقة المشغّل بالساعة).</div>' +
+              '<button class="js-tw-pub">📣 نشر الآن</button><button class="secondary js-tw-sch">🕐 جدولة</button>';
+            html += '<div class="name">سجل المنشورات</div>' + ((tw.posts || []).map(function (p) {
+              return '<div class="act"><span>' + esc((p.text || '').slice(0, 200)) + ' — ' + esc(p.status) + (p.scheduledAt ? ' — ' + esc(p.scheduledAt) : '') + '</span></div>' +
+                (p.destinations || []).map(function (d) {
+                  return '<div class="act"><span>' + esc(d.title) + ' — ' + esc(d.status) + (d.error ? ' — ' + esc(d.error) : '') + '</span>' + (d.link ? '<a href="' + esc(d.link) + '" target="_blank">🔗</a>' : '') + '</div>';
+                }).join('') +
+                (p.destinations && p.destinations.some(function (d) { return d.link; }) ? '<button class="secondary js-tw-repbtn" data-link="' + esc((p.destinations.filter(function (d) { return d.link; })[0] || {}).link || '') + '">↩️ تحويل هذا المنشور</button>' : '');
+            }).join('') || '<div class="hint">لا منشورات بعد.</div>');
+            html += '<div class="name">تحويل منشور سابق إلى قنوات أخرى</div><label>رابط المنشور الأصل (t.me/…)</label><input id="tw-replink" placeholder="https://t.me/…/123" dir="ltr">' +
+              '<label>القنوات الوجهة</label><div>' + ((tw.channels || []).filter(function (c) { return c.active; }).map(function (c) { return '<label><input type="checkbox" class="tw-repch" value="' + esc(c.channelId) + '" checked> ' + esc(c.title || c.channelId) + '</label>'; }).join(' ') || '<div class="hint">أضف قناة نشطة أولًا.</div>') + '</div>' +
+              '<label>الطريقة</label><select id="tw-repmode"><option value="copy">نسخ (بلا شارة المصدر)</option><option value="forward">تحويل (مع شارة المصدر)</option></select>' +
+              '<button class="js-tw-repost">↩️ نسخ / تحويل المنشور</button>';
+            html += '<button class="secondary js-tw-load">🔄 تحديث</button>';
+          } else html += '<button class="js-tw-load">عرض التواصل</button>';
+          html += '</div>';
+        }
           el.innerHTML = html;
           bindPid(el);
         var loadSch = el.querySelector('.js-load-sch');
@@ -1077,9 +1107,45 @@ function statusClick(action, t) {
             runAdmin('wirdDeleteMaterial', { pid: pidOf(), id: btn.getAttribute('data-id') }).then(function (r) { if (r && r.ok) loadWird(); });
           };
         });
-        el.querySelectorAll('.js-wedit').forEach(function (btn) {
+                el.querySelectorAll('.js-wedit').forEach(function (btn) {
           btn.onclick = function () { wirdEditDay(btn); };
         });
+        var twLoad = el.querySelector('.js-tw-load');
+        if (twLoad) twLoad.onclick = function () { loadTawasul(); };
+        var twChAdd = el.querySelector('.js-tw-chadd');
+        if (twChAdd) twChAdd.onclick = function () {
+          runAdmin('tawasulAddChannel', { pid: pidOf(), channel: (el.querySelector('#tw-ch') || {}).value }, 'جارٍ إضافة القناة…').then(function (r) { if (r && r.ok) loadTawasul(); });
+        };
+        el.querySelectorAll('.js-tw-chtoggle').forEach(function (btn) {
+          btn.onclick = function () { runAdmin('tawasulToggleChannel', { pid: pidOf(), channelId: btn.getAttribute('data-id'), active: btn.getAttribute('data-active') === '1' }).then(function (r) { if (r && r.ok) loadTawasul(); }); };
+        });
+        el.querySelectorAll('.js-tw-chdel').forEach(function (btn) {
+          btn.onclick = function () {
+            if (!window.confirm('حذف هذه القناة من القائمة؟ (لا يحذف منشوراتها المنشورة)')) return;
+            runAdmin('tawasulRemoveChannel', { pid: pidOf(), channelId: btn.getAttribute('data-id') }).then(function (r) { if (r && r.ok) loadTawasul(); });
+          };
+        });
+        function twPostBody(sched) {
+          var dests = []; el.querySelectorAll('.tw-ch').forEach(function (c) { if (c.checked) dests.push(c.value); });
+          var b = { pid: pidOf(), text: (el.querySelector('#tw-text') || {}).value || '', mediaType: (el.querySelector('#tw-media') || {}).value || '', mediaFileId: (el.querySelector('#tw-fileid') || {}).value || '', destIds: dests };
+          if (sched) b.scheduledAt = (el.querySelector('#tw-when') || {}).value || '';
+          return b;
+        }
+        var twPub = el.querySelector('.js-tw-pub');
+        if (twPub) twPub.onclick = function () { runAdmin('tawasulCreatePost', twPostBody(false), 'جارٍ النشر…').then(function (r) { if (r && r.ok) loadTawasul(); }); };
+        var twSch = el.querySelector('.js-tw-sch');
+        if (twSch) twSch.onclick = function () {
+          if (!(el.querySelector('#tw-when') || {}).value) { setStatus('حدّد موعد النشر أولًا.', true); return; }
+          runAdmin('tawasulCreatePost', twPostBody(true), 'جارٍ الجدولة…').then(function (r) { if (r && r.ok) loadTawasul(); });
+        };
+        el.querySelectorAll('.js-tw-repbtn').forEach(function (btn) {
+          btn.onclick = function () { var l = el.querySelector('#tw-replink'); if (l) { l.value = btn.getAttribute('data-link') || ''; l.focus(); } };
+        });
+        var twRepost = el.querySelector('.js-tw-repost');
+        if (twRepost) twRepost.onclick = function () {
+          var dests = []; el.querySelectorAll('.tw-repch').forEach(function (c) { if (c.checked) dests.push(c.value); });
+          runAdmin('tawasulRepost', { pid: pidOf(), link: (el.querySelector('#tw-replink') || {}).value || '', destIds: dests, asCopy: ((el.querySelector('#tw-repmode') || {}).value || 'copy') === 'copy' }, 'جارٍ التحويل…').then(function (r) { if (r && r.ok) loadTawasul(); });
+        };
       }
       function loadSchedule() {
         api('schedule', { pid: pidOf() }).then(function (r) {
@@ -1178,12 +1244,18 @@ function statusClick(action, t) {
           admin.wird = r; admin.wirdPreview = null; setStatus(''); renderAdminMore();
         }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
       }
-      function loadStudents() {
+            function loadStudents() {
           api('students', { pid: pidOf() }).then(function (r) {
             if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
             admin.students = r; setStatus(''); renderAdminMore();
           }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
         }
+      function loadTawasul() {
+        api('tawasulChannels', { pid: pidOf() }).then(function (r) {
+          if (!r || !r.ok) { setStatus((r && (r.message || r.error)) || 'تعذر التحميل.', true); return; }
+          admin.tawasul = r; setStatus(''); renderAdminMore();
+        }).catch(function () { setStatus('تعذر الاتصال بالخادم.', true); });
+      }
         function loadTab(name) {
         if (!isAdmin()) return;
         if (name === 'review') loadReview();
