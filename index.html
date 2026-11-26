@@ -994,7 +994,7 @@ function statusClick(action, t) {
           html += '<label>نوع المادة</label><select id="wird-type"><option value="مكتوبة">مكتوبة</option><option value="مرئية">مرئية (فيديو واحد)</option><option value="قائمة تشغيل">قائمة تشغيل يوتيوب</option></select>';
           html += '<div id="wird-written"><label>من صفحة</label><input id="wird-sp" type="number" min="1"><label>إلى صفحة</label><input id="wird-ep" type="number" min="1"></div>';
           html += '<div id="wird-video" hidden><label>رابط الفيديو</label><input id="wird-url" placeholder="https://youtu.be/…" dir="ltr"><label>يبدأ من (دقيقة:ثانية، اختياري)</label><input id="wird-ss" placeholder="0:00"><label>ينتهي عند (دقيقة:ثانية، اختياري)</label><input id="wird-es" placeholder=""><label>دقائق كل يوم</label><input id="wird-mpd" type="number" min="1" value="5"><label><input type="checkbox" id="wird-whole"> المادة كاملة في يوم واحد</label></div>';
-          html += '<div id="wird-playlist" hidden><label>رابط قائمة التشغيل</label><input id="wird-purl" placeholder="https://www.youtube.com/playlist?list=…" dir="ltr"><div id="wird-videos"></div></div>';
+          html += '<div id="wird-playlist" hidden><label>رابط قائمة التشغيل</label><input id="wird-purl" placeholder="https://www.youtube.com/playlist?list=…" dir="ltr"><label>دقائق كل يوم (لكل محاضرة)</label><input id="wird-pmpd" type="number" min="1" value="5"><div id="wird-videos"></div></div>';
           html += '<label>عدد الأيام (أو اتركه وحدّد التاريخين)</label><input id="wird-days" type="number" min="1"><label>تاريخ البداية</label><input id="wird-sd" type="date"><label>تاريخ النهاية</label><input id="wird-ed" type="date">';
           html += '<label><input type="checkbox" id="wird-rest"> إضافة الأوراد في أيام الراحة أيضًا</label>';
           html += '<label>أيام النشر (اترك الكل محددًا للنشر كل يوم عدا الراحة)</label><div id="wird-pdays">' + ['السبت','الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'].map(function (d) { return '<label><input type="checkbox" class="wird-pd" value="' + d + '" checked> ' + d + '</label>'; }).join(' ') + '</div>';
@@ -1174,6 +1174,7 @@ function statusClick(action, t) {
           b.wholeDay = !!(el.querySelector('#wird-whole') && el.querySelector('#wird-whole').checked);
         } else {
           b.url = (el.querySelector('#wird-purl') || {}).value || '';
+          b.minutesPerDay = Number((el.querySelector('#wird-pmpd') || {}).value) || 5;
           b.videos = [];
           el.querySelectorAll('.wird-vid').forEach(function (c) {
             if (!c.checked) return;
