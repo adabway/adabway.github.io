@@ -1205,8 +1205,7 @@ function statusClick(action, t) {
             box.innerHTML = '<label><input type="checkbox" id="wird-all" checked> تحديد الكل</label>' + r.videos.map(function (v) {
               return '<div class="act"><label><input type="checkbox" class="wird-vid" value="' + esc(v.id) + '" data-title="' + esc(v.title) + '" data-seconds="' + v.seconds + '" checked> ' + esc(v.title) + ' (' + Math.floor(v.seconds / 60) + ':' + ('0' + (v.seconds % 60)).slice(-2) + ')</label><input class="wird-vmpd" type="number" min="1" value="' + defMpd + '" style="width:70px" placeholder="دقائق/يوم"></div>';
             }).join('');
-            var all = el.querySelector('#wird-all');
-            
+            var all = el.querySelector('#wird-all');            
             if (all) all.onchange = function () { el.querySelectorAll('.wird-vid').forEach(function (c) { c.checked = all.checked; }); };
             return;
           }
